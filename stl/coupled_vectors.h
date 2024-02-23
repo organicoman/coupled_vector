@@ -61,6 +61,7 @@
 #include <array>
 #include <type_traits>
 #include <memory>
+#include <cstring> // std::memcpy
 #include <tuple>
 
 namespace stl
@@ -91,25 +92,6 @@ namespace stl
     , _M_cap(0)
     { }
 
-    constexpr _ptrs_store_base(std::size_t __sz, std::size_t __cap)
-    : _M_begins(_ptrs_array_t{})
-    , _M_sz(__sz)
-    , _M_cap(__cap)
-    { }
-
-    template<typename... _v_ptr>
-    constexpr _ptrs_store_base(_v_ptr... __bufs)
-    : _M_begins{static_cast<_void_ptr>(__bufs), ...}
-    , _M_sz(0)
-    , _M_cap(0)
-    { 
-      static_assert(sizeof...(_v_ptr) != _Nm
-      , "number of buffers must be equal"
-      "to the predefined size of this struct");
-      static_assert(std::is_pointer_v<_v_ptr>&& ...
-      , "all args must be of pointer-type to data store.");
-    }
-
     ~_base_data() = default;
     
     constexpr _ptrs_store_base(const _base_data& __othr) noexcept = default;
@@ -134,11 +116,34 @@ namespace stl
       return *this;
     }
 
-    void _swap(_ptrs_store_base& __othr) noexcept
+    constexpr explicit _ptrs_store_base(std::size_t __sz, std::size_t __cap)
+    : _M_begins(_ptrs_array_t{})
+    , _M_sz(__sz)
+    , _M_cap(__cap)
+    { }
+
+    template<typename _Ptr_t>
+    constexpr explicit
+    _ptrs_store_base(std::array<_Ptr_t, _Nm> const& __begins
+                    , std::size_t __sz, std::size_t __cap)
+    : _M_sz(__sz)
+    , _M_cap(__cap)
     {
-      _M_begins = std::exchange(__othr._M_begins, _M_begins);
-      _M_sz = std::exchange(__othr._M_sz, _M_sz);
-      _M_cap = std::exchange(__othr._M_cap, _M_cap);
+      static_assert(std::is_pointer_v<_Ptr_t>
+                   , "all args must be of pointer-type to data store.");
+      std::memcpy(_M_begins.data(), __begins.data(), _Nm);
+    }
+    template<typename... _Ptr_t>
+    constexpr _ptrs_store_base(_Ptr_t... __bufs)
+    : _M_begins{static_cast<_void_ptr>(__bufs), ...}
+    , _M_sz(0)
+    , _M_cap(0)
+    { 
+      static_assert(sizeof...(_Ptr_t) != _Nm
+                  , "number of buffers must be equal"
+                    "to the predefined size of this struct");
+      static_assert(std::is_pointer_v<_Ptr_t>&& ...
+                  , "all args must be of pointer-type to data store.");
     }
 
     auto begin() noexcept
@@ -153,15 +158,35 @@ namespace stl
     auto cend() const noexcept
     { return std::cend(_M_begins); }
 
-    size_t _vecs_count() const
+    void _M_swap(_ptrs_store_base& __othr) noexcept
+    {
+      _M_begins = std::exchange(__othr._M_begins, _M_begins);
+      _M_sz = std::exchange(__othr._M_sz, _M_sz);
+      _M_cap = std::exchange(__othr._M_cap, _M_cap);
+    }
+
+    size_t _M_coupled_vecs_count() const
     { return _Nm; }
 
-    void _clear() noexcept
+    void _M_clear() noexcept
     { 
       _M_begins = _ptr_store_t{0};
       _M_sz = 0;
       _M_cap = 0;
     }
+
+    /**
+     * the capacity of one vector buffer
+    */
+    std::size_t _M_vec_cap() const noexcept
+    { return _M_cap; }
+
+    /**
+     * the number of elements of one vector buffer
+    */
+   std::size_t _M_vec_size() const noexcept
+   { return _M_sz;}
+
 
     
   };
