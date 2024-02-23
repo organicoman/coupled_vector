@@ -69,154 +69,156 @@ namespace stl
   template<typename _Alloc = std::allocator<std::byte>>
   struct _Coupled_vectors_base
   {
-/// @brief _ptrs_store_base: A base class storing the start pointers
-  ///        to several buffers.
-  ///        The idea here, is to store pointers to buffers of different types,
-  ///        and since the std::array accepts only one type as a typed template
-  ///        parameter, then we will store all pointers as void pinters.
-  ///        Later on when we need to access the elements of the buffers,
-  ///        we static cast back to the original data type.
-  /// @tparam N : an unsigned integer representing the number of coupled
-  ///         vectors.
 
-  template<std::size_t _Nm>
-  struct _Ptrs_store_base
-  {
-    using _void_ptr = void*;
-    using _ptrs_array_t = std::array<_void_ptr, _Nm>;
 
-    _ptr_store_t _M_begins;
-    std::size_t _M_sz; // elements count for all coupled vectors
-    std::size_t _M_cap; // buffer capacity for all coupled vectors
+    /// @brief _ptrs_store_base: A base class storing the start pointers
+    ///        to several buffers.
+    ///        The idea here, is to store pointers to buffers of different types,
+    ///        and since the std::array accepts only one type as a typed template
+    ///        parameter, then we will store all pointers as void pinters.
+    ///        Later on when we need to access the elements of the buffers,
+    ///        we static cast back to the original data type.
+    /// @tparam N : an unsigned integer representing the number of coupled
+    ///         vectors.
 
-    constexpr _Ptrs_store_base() noexcept
-    : _M_begins(_ptrs_array_t{}) // List init, value initialize to nullptr
-    , _M_sz(0)
-    , _M_cap(0)
-    { }
-
-    ~_base_data() = default;
-    
-    constexpr 
-    _Ptrs_store_base(const _Ptrs_store_base& __othr) noexcept = default;
-    
-    constexpr _Ptrs_store_base(_Ptrs_store_base&& __othr) noexcept
-    : _M_begins(std::exchange(__othr._M_begins, _ptr_store_t{}))
-    , _M_sz(std::exchange(__othr._M_sz, 0))
-    , _M_sz(std::exchange(__othr._M_cap, 0))
-    { }
-
-    constexpr _Ptrs_store_base& 
-    operator=(const _Ptrs_store_base& __rght) noexcept = default;
-
-    constexpr _Ptrs_store_base& 
-    operator=(_Ptrs_store_base&& __rght) noexcept
+    template<std::size_t _Nm>
+    struct _Ptrs_store_base
     {
-      if(__rght == *this)
+      using _void_ptr = void*;
+      using _ptrs_array_t = std::array<_void_ptr, _Nm>;
+
+      _ptr_store_t _M_begins;
+      std::size_t _M_sz; // elements count for all coupled vectors
+      std::size_t _M_cap; // buffer capacity for all coupled vectors
+
+      constexpr _Ptrs_store_base() noexcept
+      : _M_begins(_ptrs_array_t{}) // List init, value initialize to nullptr
+      , _M_sz(0)
+      , _M_cap(0)
+      { }
+
+      ~_base_data() = default;
+      
+      constexpr 
+      _Ptrs_store_base(const _Ptrs_store_base& __othr) noexcept = default;
+      
+      constexpr _Ptrs_store_base(_Ptrs_store_base&& __othr) noexcept
+      : _M_begins(std::exchange(__othr._M_begins, _ptr_store_t{}))
+      , _M_sz(std::exchange(__othr._M_sz, 0))
+      , _M_sz(std::exchange(__othr._M_cap, 0))
+      { }
+
+      constexpr _Ptrs_store_base& 
+      operator=(const _Ptrs_store_base& __rght) noexcept = default;
+
+      constexpr _Ptrs_store_base& 
+      operator=(_Ptrs_store_base&& __rght) noexcept
+      {
+        if(__rght == *this)
+          return *this;
+        _M_begins = std::exchange(__rght._M_begins, _ptr_store_t{});
+        _M_sz = std::exchange(__rght._M_sz, 0);
+        _M_cap = std::exchange(__rght._M_cap, 0);
         return *this;
-      _M_begins = std::exchange(__rght._M_begins, _ptr_store_t{});
-      _M_sz = std::exchange(__rght._M_sz, 0);
-      _M_cap = std::exchange(__rght._M_cap, 0);
-      return *this;
-    }
+      }
 
-    constexpr 
-    explicit _ptrs_store_base(std::size_t __sz, std::size_t __cap)
-    : _M_begins(_ptrs_array_t{})
-    , _M_sz(__sz)
-    , _M_cap(__cap)
-    { }
+      constexpr 
+      explicit _ptrs_store_base(std::size_t __sz, std::size_t __cap)
+      : _M_begins(_ptrs_array_t{})
+      , _M_sz(__sz)
+      , _M_cap(__cap)
+      { }
 
-    template<typename _Ptr_t>
-    constexpr 
-    explicit _ptrs_store_base(std::array<_Ptr_t, _Nm> const& __begins
-                            , std::size_t __sz, std::size_t __cap)
-    : _M_sz(__sz)
-    , _M_cap(__cap)
-    {
-      static_assert(std::is_pointer_v<_Ptr_t>
-                   , "all args must be of pointer-type to data store.");
-      std::memcpy(_M_begins.data(), __begins.data(), _Nm);
-    }
-    template<typename... _Ptr_t>
-    constexpr _ptrs_store_base(_Ptr_t... __bufs)
-    : _M_begins{static_cast<_void_ptr>(__bufs), ...}
-    , _M_sz(0)
-    , _M_cap(0)
-    { 
-      static_assert(sizeof...(_Ptr_t) != _Nm
-                  , "number of buffers must be equal"
-                    "to the predefined size of this struct");
-      static_assert(std::is_pointer_v<_Ptr_t>&& ...
-                  , "all args must be of pointer-type to data store.");
-    }
+      template<typename _Ptr_t>
+      constexpr 
+      explicit _ptrs_store_base(std::array<_Ptr_t, _Nm> const& __begins
+                              , std::size_t __sz, std::size_t __cap)
+      : _M_sz(__sz)
+      , _M_cap(__cap)
+      {
+        static_assert(std::is_pointer_v<_Ptr_t>
+                    , "all args must be of pointer-type to data store.");
+        std::memcpy(_M_begins.data(), __begins.data(), _Nm);
+      }
+      template<typename... _Ptr_t>
+      constexpr _ptrs_store_base(_Ptr_t... __bufs)
+      : _M_begins{static_cast<_void_ptr>(__bufs), ...}
+      , _M_sz(0)
+      , _M_cap(0)
+      { 
+        static_assert(sizeof...(_Ptr_t) != _Nm
+                    , "number of buffers must be equal"
+                      "to the predefined size of this struct");
+        static_assert(std::is_pointer_v<_Ptr_t>&& ...
+                    , "all args must be of pointer-type to data store.");
+      }
 
-    auto begin() noexcept
-    { return std::begin(_M_begins); }
+      auto begin() noexcept
+      { return std::begin(_M_begins); }
 
-    auto end() noexcept
-    { return std::end(_M_begins); }
+      auto end() noexcept
+      { return std::end(_M_begins); }
 
-    auto cbegin() const noexcept
-    { return std::cbegin(_M_begins); }
+      auto cbegin() const noexcept
+      { return std::cbegin(_M_begins); }
 
-    auto cend() const noexcept
-    { return std::cend(_M_begins); }
+      auto cend() const noexcept
+      { return std::cend(_M_begins); }
 
-    void _M_swap(_ptrs_store_base& __othr) noexcept
-    {
-      _M_begins = std::exchange(__othr._M_begins, _M_begins);
-      _M_sz = std::exchange(__othr._M_sz, _M_sz);
-      _M_cap = std::exchange(__othr._M_cap, _M_cap);
-    }
+      void _M_swap(_ptrs_store_base& __othr) noexcept
+      {
+        _M_begins = std::exchange(__othr._M_begins, _M_begins);
+        _M_sz = std::exchange(__othr._M_sz, _M_sz);
+        _M_cap = std::exchange(__othr._M_cap, _M_cap);
+      }
 
-    std::size_t 
-    _M_coupled_vecs_count() const
-    { return _Nm; }
+      std::size_t 
+      _M_coupled_vecs_count() const
+      { return _Nm; }
 
-    void 
-    _M_clear() noexcept
-    { 
-      _M_begins = _ptr_store_t{0};
-      _M_sz = 0;
-      _M_cap = 0;
-    }
+      void 
+      _M_clear() noexcept
+      { 
+        _M_begins = _ptr_store_t{0};
+        _M_sz = 0;
+        _M_cap = 0;
+      }
 
-    /**
-     * the capacity of one vector buffer
-    */
-    std::size_t 
-    _M_vec_cap() const noexcept
-    { return _M_cap; }
+      /**
+       * the capacity of one vector buffer
+      */
+      std::size_t 
+      _M_vec_cap() const noexcept
+      { return _M_cap; }
 
-    /**
-     * the number of elements of one vector buffer
-    */
-    std::size_t 
-    _M_vec_size() const noexcept
-    { return _M_sz;}
+      /**
+       * the number of elements of one vector buffer
+      */
+      std::size_t 
+      _M_vec_size() const noexcept
+      { return _M_sz;}
 
-    // not throwing, but possible UB
-    // individual buffers are meant to change together, thus
-    // this operator is not modifing.
-    constexpr auto 
-    operator[](std::size_t __idx) const noexcept
-    { 
-#ifdef __cplusplus >=201811L // compile time throw exception
-      if (is_constant_evaluated())
-        static_assert(__idx <= _Nm, "out of range constexpr index access.");
-#endif
-      return _M_begins[__idx]; 
-    }
+      // not throwing, but possible UB
+      // individual buffers are meant to change together, thus
+      // this operator is not modifing.
+      constexpr auto 
+      operator[](std::size_t __idx) const noexcept
+      { 
+  #ifdef __cplusplus >=201811L // compile time throw exception
+        if (is_constant_evaluated())
+          static_assert(__idx <= _Nm, "out of range constexpr index access.");
+  #endif
+        return _M_begins[__idx]; 
+      }
+      
+    }; // _Ptr_store_base
     
-  }; // _Ptr_store_base
-  
 
-  template<typename _Alloc = std::allocator<std::byte>>
-  struct _Alloc_base
-  {
+    
+    struct _Alloc_base
+    {
 
-  }; // _Alloc_base
+    }; // _Alloc_base
 
   }; // _Coupled_vectors_base
 
