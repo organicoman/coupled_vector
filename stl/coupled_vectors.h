@@ -66,7 +66,10 @@
 
 namespace stl
 {
-  /// @brief _ptrs_store_base: A base class storing the start pointers
+  template<typename _Alloc = std::allocator<std::byte>>
+  struct _Coupled_vectors_base
+  {
+/// @brief _ptrs_store_base: A base class storing the start pointers
   ///        to several buffers.
   ///        The idea here, is to store pointers to buffers of different types,
   ///        and since the std::array accepts only one type as a typed template
@@ -77,7 +80,7 @@ namespace stl
   ///         vectors.
 
   template<std::size_t _Nm>
-  struct _ptrs_store_base
+  struct _Ptrs_store_base
   {
     using _void_ptr = void*;
     using _ptrs_array_t = std::array<_void_ptr, _Nm>;
@@ -86,7 +89,7 @@ namespace stl
     std::size_t _M_sz; // elements count for all coupled vectors
     std::size_t _M_cap; // buffer capacity for all coupled vectors
 
-    constexpr _ptrs_store_base() noexcept
+    constexpr _Ptrs_store_base() noexcept
     : _M_begins(_ptrs_array_t{}) // List init, value initialize to nullptr
     , _M_sz(0)
     , _M_cap(0)
@@ -94,19 +97,20 @@ namespace stl
 
     ~_base_data() = default;
     
-    constexpr _ptrs_store_base(const _base_data& __othr) noexcept = default;
+    constexpr 
+    _Ptrs_store_base(const _Ptrs_store_base& __othr) noexcept = default;
     
-    constexpr _ptrs_store_base(_base_data&& __othr) noexcept
+    constexpr _Ptrs_store_base(_Ptrs_store_base&& __othr) noexcept
     : _M_begins(std::exchange(__othr._M_begins, _ptr_store_t{}))
     , _M_sz(std::exchange(__othr._M_sz, 0))
     , _M_sz(std::exchange(__othr._M_cap, 0))
     { }
 
-    constexpr _ptrs_store_base& 
-    operator=(const _ptrs_store_base& __rght) noexcept = default;
+    constexpr _Ptrs_store_base& 
+    operator=(const _Ptrs_store_base& __rght) noexcept = default;
 
-    constexpr _ptrs_store_base& 
-    operator=(_ptrs_store_base&& __rght) noexcept
+    constexpr _Ptrs_store_base& 
+    operator=(_Ptrs_store_base&& __rght) noexcept
     {
       if(__rght == *this)
         return *this;
@@ -116,16 +120,17 @@ namespace stl
       return *this;
     }
 
-    constexpr explicit _ptrs_store_base(std::size_t __sz, std::size_t __cap)
+    constexpr 
+    explicit _ptrs_store_base(std::size_t __sz, std::size_t __cap)
     : _M_begins(_ptrs_array_t{})
     , _M_sz(__sz)
     , _M_cap(__cap)
     { }
 
     template<typename _Ptr_t>
-    constexpr explicit
-    _ptrs_store_base(std::array<_Ptr_t, _Nm> const& __begins
-                    , std::size_t __sz, std::size_t __cap)
+    constexpr 
+    explicit _ptrs_store_base(std::array<_Ptr_t, _Nm> const& __begins
+                            , std::size_t __sz, std::size_t __cap)
     : _M_sz(__sz)
     , _M_cap(__cap)
     {
@@ -204,7 +209,16 @@ namespace stl
       return _M_begins[__idx]; 
     }
     
-  };
+  }; // _Ptr_store_base
+  
+
+  template<typename _Alloc = std::allocator<std::byte>>
+  struct _Alloc_base
+  {
+
+  }; // _Alloc_base
+
+  }; // _Coupled_vectors_base
 
 }// namespace stl
 #endif // _COUPLED_VECTORS_H
