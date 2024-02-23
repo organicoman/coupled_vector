@@ -165,10 +165,12 @@ namespace stl
       _M_cap = std::exchange(__othr._M_cap, _M_cap);
     }
 
-    size_t _M_coupled_vecs_count() const
+    std::size_t 
+    _M_coupled_vecs_count() const
     { return _Nm; }
 
-    void _M_clear() noexcept
+    void 
+    _M_clear() noexcept
     { 
       _M_begins = _ptr_store_t{0};
       _M_sz = 0;
@@ -178,16 +180,29 @@ namespace stl
     /**
      * the capacity of one vector buffer
     */
-    std::size_t _M_vec_cap() const noexcept
+    std::size_t 
+    _M_vec_cap() const noexcept
     { return _M_cap; }
 
     /**
      * the number of elements of one vector buffer
     */
-   std::size_t _M_vec_size() const noexcept
-   { return _M_sz;}
+    std::size_t 
+    _M_vec_size() const noexcept
+    { return _M_sz;}
 
-
+    // not throwing, but possible UB
+    // individual buffers are meant to change together, thus
+    // this operator is not modifing.
+    constexpr auto 
+    operator[](std::size_t __idx) const noexcept
+    { 
+#ifdef __cplusplus >=201811L // compile time throw exception
+      if (is_constant_evaluated())
+        static_assert(__idx <= _Nm, "out of range constexpr index access.");
+#endif
+      return _M_begins[__idx]; 
+    }
     
   };
 
