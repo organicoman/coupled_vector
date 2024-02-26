@@ -65,7 +65,6 @@
 #include <cstddef> // std::byte
 #include <tuple>
 #include <vector>
-#include <numeric>
 
 namespace stl
 {
@@ -192,29 +191,40 @@ namespace stl
 
       template<typename..._Ts, size_type _N = sizeof...(_Ts)>
       auto _M_allocate(size_type _n_elem)
+                      -> std::pair<pointer, std::array<pointer, _N>>
       {
-        struct
-        {
-          pointer _M_ptr;
-          std::array<size_type, _N> _M_offsets{0};
-        } partitions;
+        pointer _M_ptr;
+        std::array<size_type, _N> _M_diffs{0};
+        std::array<pointer, _N> _M_offsets{};
+        
         // calculate total size in std::byte
         std::array<size_type, _N> _Szof = {sizeof(_Ts)...};
         std::array<size_type, _N> _Algnof = {alignof(_Ts)...};
         for(size_type it = 1; it < _N; ++it)
         {
           auto v = _Szof[it-1] * _n_elem;
-          auto cum = v + partitions._M_offsets[it-1];
+          auto cum = v + _M_diffs[it-1];
           if(cum % _Algnof[it] == 0)
-            partitions._M_offsets[it] = cum;
+            _M_diffs[it] = cum;
           else
-            partitions._M_offsets[it] =  cum + (_Algnof[it] - (cum % _Algnof[it]));
+            _M_diffs[it] =  cum + (_Algnof[it] - (cum % _Algnof[it]));
         }
-        size_type _n_bytes = std::accumulate(partitions._M_offsets.begin()
-                                           , partitions._M_offsets.end()
-                                           , _Szof.at(_N - 1) * _n_elem);
-        partitions._M_ptr = this->allocate()
-        return partitions;
+        size_type _n_bytes = _M_diffs.back() + _Szof.at(_N - 1) * _n_elem;
+        try
+        {
+          _M_ptr = this->allocate(_n_bytes);
+        }
+        catch(...)
+        {
+          throw;
+        }
+
+        if(_M_ptr == pointer{})
+          return {_M_ptr, _M_offsets};
+
+        for(size_type it = 0; it < _N; ++it)
+          _M_offsets[it] = _M_ptr + _M_diffs[it];
+        return {_M_ptr, _M_offsets};
       }
     };
 
