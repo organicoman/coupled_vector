@@ -65,6 +65,7 @@
 #include <cstddef> // std::byte
 #include <tuple>
 #include <vector>
+#include <algorithm> // std::transform
 
 namespace stl
 {
@@ -207,7 +208,7 @@ namespace stl
           if(cum % _Algnof[it] == 0)
             _M_diffs[it] = cum;
           else
-            _M_diffs[it] =  cum + (_Algnof[it] - (cum % _Algnof[it]));
+            _M_diffs[it] = cum + (_Algnof[it] - (cum % _Algnof[it]));
         }
         size_type _n_bytes = _M_diffs.back() + _Szof.at(_N - 1) * _n_elem;
         try
@@ -222,8 +223,10 @@ namespace stl
         if(_M_ptr == pointer{})
           return {_M_ptr, _M_offsets};
 
-        for(size_type it = 0; it < _N; ++it)
-          _M_offsets[it] = _M_ptr + _M_diffs[it];
+        std::transform(_M_diffs.begin(), _M_diffs.end(), _M_offsets.begin()
+                      , [_M_ptr](size_type offset){return _M_ptr + offset;});
+        // for(size_type it = 0; it < _N; ++it)
+        //   _M_offsets[it] = _M_ptr + _M_diffs[it];
         return {_M_ptr, _M_offsets};
       }
     };
