@@ -114,11 +114,11 @@ namespace stl
 
       template<typename _Ptr_t>
       constexpr 
-      explicit _Ptrs_array_base(std::array<_Ptr_t, _Nm> const& __begins)
+      explicit _Ptrs_array_base(std::array<_Ptr_t, _Nm> const& __arr)
       {
         static_assert(std::is_pointer_v<_Ptr_t>
                     , "all args must be of pointer-type to data store.");
-        std::memcpy(this->data(), __begins.data(), _Nm);
+        std::memcpy(this->data(), __arr.data(), _Nm);
       }
 
       // Conversion from any pointers type.
@@ -142,11 +142,11 @@ namespace stl
     using _rebind_Allocator = 
     typename std::allocator_traits<_Alloc>::template rebind<_Tp>::other;
     
-    // helper dummy struct for correct alignement
-    template<typename _1st_Type, std::size_t _Sz>
-    struct alignas(alignof(_1st_Type)) _dummy_struct
+    // helper struct for correct alignement
+    template<std::size_t _Alignof>
+    struct alignas(_AlignOf) aligned_byte
     {
-      std::byte _buf[_Sz];
+      std::byte _block;
     };
 
     /// @brief _Alloc_base: base class to manage allocation of the coupled
@@ -175,48 +175,53 @@ namespace stl
     struct _Alloc_base;
 
     // Arena allocation strategy
-    template<typename _1st_Type, std::size_t _Arena_max_sz, typename _Allocator>
-    struct _Alloc_base<_Allocator, true>
-    : public _rebind_Allocator<_Allocator
-                             , _dummy_struct<_1st_Type, _Arena_max_sz>> 
+    template<typename _Alloc
+           , std::size_t _Alignof = alignof(typename _Alloc::type_value)>
+    struct _Alloc_base<_Alloc, true>
+    : public _rebind_Allocator<_Alloc, aligned_byte<_AlignOf>> 
     {
-      using _base_type = 
-        _rebind_Allocator<_Allocator, _dummy_struct<_1st_Type, _Arena_sz>>;
-
-      using _alloc_traits = std::allocator_traits<+base_type>;
+      using _base_type = _rebind_Allocator<_Alloc, aligned_byte<_AlignOf>>;
+      using _alloc_traits = std::allocator_traits<_base_type>;
       using value_type = typename _alloc_traits::value_type;
       using pointer = typename _alloc_traits::pointer;
       using size_type = typename _alloc_traits::size_type;
 
+      // base type import all Ctors
       using _base_type::_base_type;
 
-      // Allocates an arena of at least _n_bytes size, aligned at the _1st_Type
-      // boundary.
-      template<typename _1st_Type>
-      pointer _M_allocate(size_type _n_byte)
+      template<typename..._Ts, size_type _N = sizeof...(_Ts)>
+      auto _M_allocate(size_type _n_elem)
       {
-        // a dummy struct to get the correct alignement
-        struct alignas(alignof(_1st_Type)) _dummy_struct
+        struct
         {
-          value_type _buf[_n_byte];
-        };
-
-        using _other_alloc = _rebind_Allocator<_rebound_alloc, _dummy_struct>;
-        auto _ptr = 
-             _alloc_traits::allocate(_other_alloc{}, sizeof(_dummy_struct));
-        return static_cast<pointer>(_ptr);
+          pointer _M_ptr;
+          std::array<size_type, _N> _M_offsets{0};
+        } partitions;
+        // calculate total size in std::byte
+        std::array<size_type, _N> _Szof = {sizeof(_Ts)...};
+        std::array<size_type, _N> _Algnof = {alignof(_Ts)...};
+        for(size_type it = 1; it < _N; ++it)
+        {
+          auto v = _Szof[it-1] * _n_elem;
+          auto cum = v + partitions._M_offsets[it-1];
+          if(cum % _Algnof[it] == 0)
+            partitions._M_offsets[it] = cum;
+          else
+            partitions._M_offsets[it] =  cum + (_Algnof[it] - (cum % _Algnof[it]));
+        }
+        return partitions;
       }
 
     };
 
     // partial specialization 
     // individual allocation strategy
-    template<typename _Allocator>
-    struct _Alloc_base<_Allocator, false> : public _Allocator
+    template<typename _Alloc>
+    struct _Alloc_base<_Alloc, false> 
+    : public _rebind_Allocator<_Alloc, std::byte>
     {
-      using _base_type = _Allocator;
-      using _from_value_type = std::allocator_traits<_Allocator>::value_type;
-      using _from_pointer = typename std::allocator_traits<_Allocator>::pointer;
+      using _base_type = _rebind_Allocator<_Alloc, std::byte>;
+      using _alloc_traits = std::allocator_traits<_base_type>;
 
       template<typename _Tp>
       auto 
