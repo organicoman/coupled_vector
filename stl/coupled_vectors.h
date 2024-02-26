@@ -65,6 +65,7 @@
 #include <cstddef> // std::byte
 #include <tuple>
 #include <vector>
+#include <numeric>
 
 namespace stl
 {
@@ -209,9 +210,12 @@ namespace stl
           else
             partitions._M_offsets[it] =  cum + (_Algnof[it] - (cum % _Algnof[it]));
         }
+        size_type _n_bytes = std::accumulate(partitions._M_offsets.begin()
+                                           , partitions._M_offsets.end()
+                                           , _Szof.at(_N - 1) * _n_elem);
+        partitions._M_ptr = this->allocate()
         return partitions;
       }
-
     };
 
     // partial specialization 
