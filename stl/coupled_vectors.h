@@ -62,89 +62,71 @@
 #include <type_traits>
 #include <memory>
 #include <cstring> // std::memcpy
+#include <cstddef> // std::byte
 #include <tuple>
+#include <vector>
 
 namespace stl
 {
-  template<typename _Alloc = std::allocator<std::byte>>
-  struct _Coupled_vectors_base
-  {
+  /**
+   * Vector of Structs or Struct of Vectors?
+   * coupled_vectors : is a class template to manage many vector-like buffers
+   * that are tied together.
+   * All managed buffers grow and shrink together.
+   * Adding elements works in packed form .i.e the user provide a value
+   * to each underlying buffer.
+   * Since this class manages many buffers, which are dissociated from each
+   * others, yet coupled by operations (adding, erasing, growing..etc),
+   * it makes it a good candidate for parallelism and vectorization techniques
+   * 
+   * The model is based and how GPU's work: 
+   *    Many dissociated buffers vs One global threaded operation.
+  */
 
+  // primary class template
+  template<typename _Tp, typename _Alloc = std::allocator<_Tp>>
+  class coupled_vectors : public std::vector<_Tp, _Alloc>
+  { };
 
-    /// @brief _ptrs_store_base: A base class storing the start pointers
+  // partial specialization
+  // std::pair is a special case of std::tuple
+  template<typename..._Ts, typename _Alloc>
+  class coupled_vectors<std::tuple<_Ts...>, _Alloc>;
+
+  namespace __detail
+  {    
+    /// @brief _Ptrs_array_base: A base class storing the start pointers
     ///        to several buffers.
     ///        The idea here, is to store pointers to buffers of different types,
     ///        and since the std::array accepts only one type as a typed template
-    ///        parameter, then we will store all pointers as void pinters.
+    ///        parameter, then we will store all pointers as void pointers.
     ///        Later on when we need to access the elements of the buffers,
     ///        we static cast back to the original data type.
     /// @tparam N : an unsigned integer representing the number of coupled
     ///         vectors.
-
     template<std::size_t _Nm>
-    struct _Ptrs_store_base
+    struct _Ptrs_array_base :  std::array<void*, _Nm>
     {
-      using _void_ptr = void*;
-      using _ptrs_array_t = std::array<_void_ptr, _Nm>;
+      using  _void_ptr = void*;
+      using _base_type = std::array<_void_ptr, _Nm>;
 
-      _ptr_store_t _M_begins;
-      std::size_t _M_sz; // elements count for all coupled vectors
-      std::size_t _M_cap; // buffer capacity for all coupled vectors
-
-      constexpr _Ptrs_store_base() noexcept
-      : _M_begins(_ptrs_array_t{}) // List init, value initialize to nullptr
-      , _M_sz(0)
-      , _M_cap(0)
-      { }
-
-      ~_base_data() = default;
-      
-      constexpr 
-      _Ptrs_store_base(const _Ptrs_store_base& __othr) noexcept = default;
-      
-      constexpr _Ptrs_store_base(_Ptrs_store_base&& __othr) noexcept
-      : _M_begins(std::exchange(__othr._M_begins, _ptr_store_t{}))
-      , _M_sz(std::exchange(__othr._M_sz, 0))
-      , _M_sz(std::exchange(__othr._M_cap, 0))
-      { }
-
-      constexpr _Ptrs_store_base& 
-      operator=(const _Ptrs_store_base& __rght) noexcept = default;
-
-      constexpr _Ptrs_store_base& 
-      operator=(_Ptrs_store_base&& __rght) noexcept
-      {
-        if(__rght == *this)
-          return *this;
-        _M_begins = std::exchange(__rght._M_begins, _ptr_store_t{});
-        _M_sz = std::exchange(__rght._M_sz, 0);
-        _M_cap = std::exchange(__rght._M_cap, 0);
-        return *this;
-      }
-
-      constexpr 
-      explicit _ptrs_store_base(std::size_t __sz, std::size_t __cap)
-      : _M_begins(_ptrs_array_t{})
-      , _M_sz(__sz)
-      , _M_cap(__cap)
-      { }
+      using _base_type::_base_type;
 
       template<typename _Ptr_t>
       constexpr 
-      explicit _ptrs_store_base(std::array<_Ptr_t, _Nm> const& __begins
-                              , std::size_t __sz, std::size_t __cap)
-      : _M_sz(__sz)
-      , _M_cap(__cap)
+      explicit _Ptrs_array_base(std::array<_Ptr_t, _Nm> const& __begins)
       {
         static_assert(std::is_pointer_v<_Ptr_t>
                     , "all args must be of pointer-type to data store.");
-        std::memcpy(_M_begins.data(), __begins.data(), _Nm);
+        std::memcpy(this->data(), __begins.data(), _Nm);
       }
+
+      // Conversion from any pointers type.
+      // N.B : The information about types is lost by static casting;
+      //       Make sure that is stored somewhere.
       template<typename... _Ptr_t>
-      constexpr _ptrs_store_base(_Ptr_t... __bufs)
-      : _M_begins{static_cast<_void_ptr>(__bufs), ...}
-      , _M_sz(0)
-      , _M_cap(0)
+      constexpr _Ptrs_array_base(_Ptr_t... __bufs)
+      : _base_type{static_cast<_void_ptr>(__bufs) ...}
       { 
         static_assert(sizeof...(_Ptr_t) != _Nm
                     , "number of buffers must be equal"
@@ -152,75 +134,107 @@ namespace stl
         static_assert(std::is_pointer_v<_Ptr_t>&& ...
                     , "all args must be of pointer-type to data store.");
       }
-
-      auto begin() noexcept
-      { return std::begin(_M_begins); }
-
-      auto end() noexcept
-      { return std::end(_M_begins); }
-
-      auto cbegin() const noexcept
-      { return std::cbegin(_M_begins); }
-
-      auto cend() const noexcept
-      { return std::cend(_M_begins); }
-
-      void _M_swap(_ptrs_store_base& __othr) noexcept
-      {
-        _M_begins = std::exchange(__othr._M_begins, _M_begins);
-        _M_sz = std::exchange(__othr._M_sz, _M_sz);
-        _M_cap = std::exchange(__othr._M_cap, _M_cap);
-      }
-
-      std::size_t 
-      _M_coupled_vecs_count() const
-      { return _Nm; }
-
-      void 
-      _M_clear() noexcept
-      { 
-        _M_begins = _ptr_store_t{0};
-        _M_sz = 0;
-        _M_cap = 0;
-      }
-
-      /**
-       * the capacity of one vector buffer
-      */
-      std::size_t 
-      _M_vec_cap() const noexcept
-      { return _M_cap; }
-
-      /**
-       * the number of elements of one vector buffer
-      */
-      std::size_t 
-      _M_vec_size() const noexcept
-      { return _M_sz;}
-
-      // not throwing, but possible UB
-      // individual buffers are meant to change together, thus
-      // this operator is not modifing.
-      constexpr auto 
-      operator[](std::size_t __idx) const noexcept
-      { 
-  #ifdef __cplusplus >=201811L // compile time throw exception
-        if (is_constant_evaluated())
-          static_assert(__idx <= _Nm, "out of range constexpr index access.");
-  #endif
-        return _M_begins[__idx]; 
-      }
       
-    }; // _Ptr_store_base
-    
+    }; // _Ptrs_array_base
 
+    // helper alias type
+    template<typename _Alloc, typename _Tp>
+    using _rebind_Allocator = 
+    typename std::allocator_traits<_Alloc>::template rebind<_Tp>::other;
     
-    struct _Alloc_base
+    // helper dummy struct for correct alignement
+    template<typename _1st_Type, std::size_t _Sz>
+    struct alignas(alignof(_1st_Type)) _dummy_struct
     {
+      std::byte _buf[_Sz];
+    };
 
-    }; // _Alloc_base
+    /// @brief _Alloc_base: base class to manage allocation of the coupled
+    ///        buffers.
+    ///        Two strategies could be used; either allocate a contiguous arena
+    ///        to hold all buffers, Or allocate the necessary size for each
+    ///        buffer separatly. The minimum size to switch from arena to
+    ///        individual buffers, needs to be mesured for effeciency.
+    ///        When using arena strategy, the buffer allocated must be aligned
+    ///        at the first type boundary .i.e (alignas(_Tp0)).
+    /// @tparam _Alloc: allocator type. 
+    ///         For Arena (_Use_arena = true) allocation strategy, we rebind
+    ///         this allocator to std::byte type, to reserve a contiguous chunck
+    ///         of memory, then we assign each coupled buffer its appropriate
+    ///         partition of memory from this arena (type alignment 
+    ///         and padding must be respected between each buffer's partition
+    ///         when calculating each partition size and begin pointer.).
+    ///         For Individual buffers allocation (_Use_arena = false), we
+    ///         use same implementation as std::vector.
+    /// @tparam _Use_arena: bool value. True for allocating an Arena where
+    ///         all buffers live together. False for individual allocations
+    ///         for each buffer.
+    
+    // primary base class
+    template<typename _Allocator, bool _Use_arena>
+    struct _Alloc_base;
 
-  }; // _Coupled_vectors_base
+    // Arena allocation strategy
+    template<typename _1st_Type, std::size_t _Arena_max_sz, typename _Allocator>
+    struct _Alloc_base<_Allocator, true>
+    : public _rebind_Allocator<_Allocator
+                             , _dummy_struct<_1st_Type, _Arena_max_sz>> 
+    {
+      using _base_type = 
+        _rebind_Allocator<_Allocator, _dummy_struct<_1st_Type, _Arena_sz>>;
 
+      using _alloc_traits = std::allocator_traits<+base_type>;
+      using value_type = typename _alloc_traits::value_type;
+      using pointer = typename _alloc_traits::pointer;
+      using size_type = typename _alloc_traits::size_type;
+
+      using _base_type::_base_type;
+
+      // Allocates an arena of at least _n_bytes size, aligned at the _1st_Type
+      // boundary.
+      template<typename _1st_Type>
+      pointer _M_allocate(size_type _n_byte)
+      {
+        // a dummy struct to get the correct alignement
+        struct alignas(alignof(_1st_Type)) _dummy_struct
+        {
+          value_type _buf[_n_byte];
+        };
+
+        using _other_alloc = _rebind_Allocator<_rebound_alloc, _dummy_struct>;
+        auto _ptr = 
+             _alloc_traits::allocate(_other_alloc{}, sizeof(_dummy_struct));
+        return static_cast<pointer>(_ptr);
+      }
+
+    };
+
+    // partial specialization 
+    // individual allocation strategy
+    template<typename _Allocator>
+    struct _Alloc_base<_Allocator, false> : public _Allocator
+    {
+      using _base_type = _Allocator;
+      using _from_value_type = std::allocator_traits<_Allocator>::value_type;
+      using _from_pointer = typename std::allocator_traits<_Allocator>::pointer;
+
+      template<typename _Tp>
+      auto 
+      _M_allocate(size_type _n)
+      {
+        using _local_type = std::allocator_traits<_Allocator>::type_value;
+        
+        using _Tp_alloc = 
+        std::allocator_traits<_Allocator>::template rebind<_Tp>::other;
+
+        if constexpr (std:is_same_v<_local_type, _Tp>)
+          return this->allocate(_n);
+        else
+          return std::allocator_traits<_Tp_alloc>::allocate(_n);
+      }
+
+    };
+    
+  } // namespace __detail
 }// namespace stl
 #endif // _COUPLED_VECTORS_H
