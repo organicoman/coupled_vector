@@ -199,8 +199,8 @@ namespace stl
         std::array<pointer, _N> _M_offsets{};
         
         // calculate total size in std::byte
-        std::array<size_type, _N> _Szof = {sizeof(_Ts)...};
-        std::array<size_type, _N> _Algnof = {alignof(_Ts)...};
+        constexpr std::array<size_type, _N> _Szof = {sizeof(_Ts)...};
+        constexpr std::array<size_type, _N> _Algnof = {alignof(_Ts)...};
         for(size_type it = 1; it < _N; ++it)
         {
           auto v = _Szof[it-1] * _n_elem;
@@ -213,7 +213,7 @@ namespace stl
         size_type _n_bytes = _M_diffs.back() + _Szof.at(_N - 1) * _n_elem;
         try
         {
-          _M_ptr = this->allocate(_n_bytes);
+          _M_ptr = _alloc_traits::allocate(*this, _n_bytes);
         }
         catch(...)
         {
@@ -240,19 +240,10 @@ namespace stl
       using _base_type = _rebind_Allocator<_Alloc, std::byte>;
       using _alloc_traits = std::allocator_traits<_base_type>;
 
-      template<typename _Tp>
-      auto 
-      _M_allocate(size_type _n)
+      template<std::size_t _Alignof>
+      pointer _M_allocate(size_type _n)
       {
-        using _local_type = std::allocator_traits<_Allocator>::type_value;
         
-        using _Tp_alloc = 
-        std::allocator_traits<_Allocator>::template rebind<_Tp>::other;
-
-        if constexpr (std:is_same_v<_local_type, _Tp>)
-          return this->allocate(_n);
-        else
-          return std::allocator_traits<_Tp_alloc>::allocate(_n);
       }
 
     };
