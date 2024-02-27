@@ -211,15 +211,8 @@ namespace stl
             _M_diffs[it] = cum + (_Algnof[it] - (cum % _Algnof[it]));
         }
         size_type _n_bytes = _M_diffs.back() + _Szof.at(_N - 1) * _n_elem;
-        try
-        {
-          _M_ptr = _alloc_traits::allocate(*this, _n_bytes);
-        }
-        catch(...)
-        {
-          throw;
-        }
-
+        _M_ptr = _alloc_traits::allocate(*this, _n_bytes);
+        
         if(_M_ptr == pointer{})
           return {_M_ptr, _M_offsets};
 
