@@ -194,7 +194,6 @@ namespace stl
       auto _M_allocate(size_type _n_elem)
                       -> std::pair<pointer, std::array<pointer, _N>>
       {
-        pointer _M_ptr;
         std::array<size_type, _N> _M_diffs{0};
         std::array<pointer, _N> _M_offsets{};
         
@@ -210,8 +209,8 @@ namespace stl
           else
             _M_diffs[it] = cum + (_Algnof[it] - (cum % _Algnof[it]));
         }
-        size_type _n_bytes = _M_diffs.back() + _Szof.at(_N - 1) * _n_elem;
-        _M_ptr = _alloc_traits::allocate(*this, _n_bytes);
+        const size_type _n_bytes = _M_diffs.back() + _Szof.at(_N - 1) * _n_elem;
+        const pointer _M_ptr = _alloc_traits::allocate(*this, _n_bytes);
         
         if(_M_ptr == pointer{})
           return {_M_ptr, _M_offsets};
