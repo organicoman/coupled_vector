@@ -242,7 +242,7 @@ namespace stl
       template<typename _Tp>
       pointer _M_allocate(size_type _n_elem)
       {
-        static_assert(alignof(_Tp) > 0xFF, "Unsupport alignement");
+        static_assert(alignof(_Tp) > 0xFF, "Unsupport Alignement.");
 
         constexpr std::size_t _M_align_val = alignof(_byte_type);
         if constexpr (alignof(_Tp) <= _M_align_val)
@@ -263,9 +263,9 @@ namespace stl
           // adjust pointer according to alignement
           pointer _M_old_ptr = _M_ptr;
           if(not std::align(alignof(_Tp), sizeof(_Tp)
-                      , static_cast<void*&>(_M_ptr), _n))
+                      , static_cast<void*&>(_M_ptr), _n_bytes))
           {
-            _alloc_traits::deallocate(*this, _M_ptr, _n);
+            _alloc_traits::deallocate(*this, _M_ptr, _n_bytes);
             // keep the behavior of the base allocator class
             // if it throws then throw.
             if constexpr (noexcept(this->allocate({})))
@@ -290,14 +290,19 @@ namespace stl
       _M_deallocate(pointer _ptr, size_type _n_elem)
       noexcept(this->deallocate({}, {}))
       {
+        static_assert(alignof(_Tp) > 0xFF, "Unsupported Alignement.");
         constexpr std::size_t _M_align_val = alignof(_byte_type);
         if constexpr(alignof(_Tp) <= _M_align_val)
           return _alloc_traits::deallocate(*this, _ptr, _n);
         else
         {
-
+          const size_type _Align_diff = alignof(_Tp) - _M_align_val;
+          const size_type _n_bytes = _n_elem * sizeof(_Tp) + _Align_diff;
+          const ptrdiff_t _M_offset = *(_ptr - 1);
+          pointer _M_ptr = _ptr - _M_offset;
+          _alloc_traits::deallocate(*this, _M_ptr, _n_bytes);
+          return;
         }
-
       }
 
     };
