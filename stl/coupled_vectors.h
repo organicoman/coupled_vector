@@ -244,53 +244,59 @@ namespace stl
       {
         static_assert(alignof(_Tp) > 0xFF, "Unsupport alignement");
 
-        const std::size_t _M_align_val = alignof(_byte_type);
-        if(alignof(_Tp) <= _M_align_val)
+        constexpr std::size_t _M_align_val = alignof(_byte_type);
+        if constexpr (alignof(_Tp) <= _M_align_val)
           return _alloc_traits::allocate(*this, _n_elem * sizeof(_Tp));
         // for any other specific alignement, we need to re-adjust the
         // request byte size, and keep track of the old pointer
-        const size_type _Align_diff = alignof(_Tp) - _M_align_val;
-        size_type _n_bytes = _n_elem * sizeof(_Tp) + _Align_diff;
-        auto _old_n = _n_bytes;
-        
-        pointer _M_ptr = _alloc_traits::allocate(*this, _n_bytes);
-        // failed allocation
-        if(_M_ptr == pointer{})
-          return pointer{};
-
-        // adjust pointer according to alignement
-        pointer _M_old_ptr = _M_ptr;
-        if(not std::align(alignof(_Tp), sizeof(_Tp)
-                    , static_cast<void*&>(_M_ptr), _n))
+        else 
         {
-          _alloc_traits::deallocate(*this, _M_ptr, _n);
-          // keep the behavior of the base allocator class
-          // if it throws then throw.
-          if constexpr (noexcept(this->allocate({})))
-            return pointer();
-          else
-            throw std::bad_alloc();
-        }
-        // for successfull realignement, store offset from new pointer.
-        // By guess work: a extended alignement of a value more than 255
-        //    is not used, thus it is acceptable to reserve one byte
-        //    to store the offset.
-        ptrdiff_t _M_offset = _M_ptr - _M_old_ptr;
+          const size_type _Align_diff = alignof(_Tp) - _M_align_val;
+          size_type _n_bytes = _n_elem * sizeof(_Tp) + _Align_diff;
+          auto _old_n = _n_bytes;
+          
+          pointer _M_ptr = _alloc_traits::allocate(*this, _n_bytes);
+          // failed allocation
+          if(_M_ptr == pointer{})
+            return pointer{};
 
-        _alloc_traits::construct(*this, _M_ptr - 1
-                                , static_cast<std::byte>(_M_offset));
-        return _M_ptr;        
+          // adjust pointer according to alignement
+          pointer _M_old_ptr = _M_ptr;
+          if(not std::align(alignof(_Tp), sizeof(_Tp)
+                      , static_cast<void*&>(_M_ptr), _n))
+          {
+            _alloc_traits::deallocate(*this, _M_ptr, _n);
+            // keep the behavior of the base allocator class
+            // if it throws then throw.
+            if constexpr (noexcept(this->allocate({})))
+              return pointer();
+            else
+              throw std::bad_alloc();
+          }
+          // for successfull realignement, store offset from new pointer.
+          // By guess work: a extended alignement of a value more than 255
+          //    is not used, thus it is acceptable to reserve one byte
+          //    to store the offset.
+          ptrdiff_t _M_offset = _M_ptr - _M_old_ptr;
+
+          _alloc_traits::construct(*this, _M_ptr - 1
+                                  , static_cast<std::byte>(_M_offset));
+          return _M_ptr;
+        }        
       }
 
       template<typename _Tp>
       void
-      _M_deallocate(pointer _ptr, size_type _n_elem, std::size_t _alignOf)
+      _M_deallocate(pointer _ptr, size_type _n_elem)
       noexcept(this->deallocate({}, {}))
       {
-        const std::size_t _void_ptr_algn = alignof(_byte_type);
-        if(_alignOf <= _void_ptr_algn)
+        constexpr std::size_t _M_align_val = alignof(_byte_type);
+        if constexpr(alignof(_Tp) <= _M_align_val)
           return _alloc_traits::deallocate(*this, _ptr, _n);
-        
+        else
+        {
+
+        }
 
       }
 
