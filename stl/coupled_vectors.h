@@ -253,7 +253,7 @@ namespace stl
         {
           const size_type _Align_diff = alignof(_Tp) - _M_align_val;
           size_type _n_bytes = _n_elem * sizeof(_Tp) + _Align_diff;
-          auto _old_n = _n_bytes;
+          const auto _old_n = _n_bytes;
           
           pointer _M_ptr = _alloc_traits::allocate(*this, _n_bytes);
           // failed allocation
@@ -261,7 +261,7 @@ namespace stl
             return pointer{};
 
           // adjust pointer according to alignement
-          pointer _M_old_ptr = _M_ptr;
+          const pointer _M_old_ptr = _M_ptr;
           if(not std::align(alignof(_Tp), sizeof(_Tp)
                       , static_cast<void*&>(_M_ptr), _n_bytes))
           {
@@ -277,7 +277,7 @@ namespace stl
           // By guess work: a extended alignement of a value more than 255
           //    is not used, thus it is acceptable to reserve one byte
           //    to store the offset.
-          ptrdiff_t _M_offset = _M_ptr - _M_old_ptr;
+          const ptrdiff_t _M_offset = _M_ptr - _M_old_ptr;
 
           _alloc_traits::construct(*this, _M_ptr - 1
                                   , static_cast<std::byte>(_M_offset));
@@ -298,7 +298,8 @@ namespace stl
         {
           const size_type _Align_diff = alignof(_Tp) - _M_align_val;
           const size_type _n_bytes = _n_elem * sizeof(_Tp) + _Align_diff;
-          const ptrdiff_t _M_offset = *(_ptr - 1);
+          // read the stored value
+          const ptrdiff_t _M_offset = static_cast<ptrdiff_t>(*(_ptr - 1));
           pointer _M_ptr = _ptr - _M_offset;
           _alloc_traits::deallocate(*this, _M_ptr, _n_bytes);
           return;
