@@ -166,7 +166,7 @@ namespace stl
     ///         and padding must be respected between each buffer's partition
     ///         when calculating each partition size and begin pointer.).
     ///         For Individual buffers allocation (_Use_arena = false), we
-    ///         use same implementation as std::vector.
+    ///         allocate each buffer array separately, respecting alignment.
     /// @tparam _Use_arena: bool value. True for allocating an Arena where
     ///         all buffers live together. False for individual allocations
     ///         for each buffer.
@@ -305,6 +305,35 @@ namespace stl
         }
       }
     };
+
+    // Maximum memory Arena size that could be allocated.
+    constexpr std::size_t __Arena_sz = 4096UL;
+
+    /**
+     * _Coupled_vectors_base
+     * base class for the main class 'Coupled_vectors'.
+     * all main operations: grow, shrink, squeeze_to_fit, range_copy...etc
+     * are implemented here.
+     * A page of memory size (4096 bytes) is picked as a threshold for a 
+     * contiguous arena allocation strategy.
+     * this is an arbitrary choice not based on any benchmarking at this date.
+     * the idea is to distribute the arena size over the count of types and 
+     * their sizes, and the length of each buffer. but since the only compile
+     * time information we can get are the count of types and their sizes, 
+     * then we will use them to decide what allocation strategy we use:
+     *       (count of types) * (sum of types sizes) <= Arena size
+     *                   /                           \
+     *               No /                             \ Yes
+     *  Individual buffer allocation.            Arena based allocation 
+     * 
+     * While in Arena allocation strategy; if the increase in the number of
+     * elements produce a growth of memory allocation larger thant what the
+     * platform can provide; it is advisable to destory
+    */
+    template<typename _Alloc, typename... _Typs>
+    struct _Coupled_vectors_base
+    :public _Alloc_base<_Alloc
+                      ,(sizeof...(_Typs) * (sizeof(_Typs)+...)) <= __Arena_sz>;
     
   } // namespace __detail
 }// namespace stl
