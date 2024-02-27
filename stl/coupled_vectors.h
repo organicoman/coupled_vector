@@ -304,7 +304,6 @@ namespace stl
           return;
         }
       }
-
     };
     
   } // namespace __detail
