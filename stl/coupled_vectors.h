@@ -57,7 +57,6 @@
 #ifndef _COUPLED_VECTORS_H
 #define _COUPLED_VECTORS_H
 
-
 #include <array>
 #include <type_traits>
 #include <memory>
@@ -67,6 +66,9 @@
 #include <vector>
 #include <algorithm> // std::transform
 
+// Works for GCC only
+// GCC ver >= 13.1
+// __cplusplus >= 17
 namespace stl
 {
   /**
@@ -143,12 +145,48 @@ namespace stl
     using _rebind_Allocator = 
     typename std::allocator_traits<_Alloc>::template rebind<_Tp>::other;
     
-    // helper struct for correct alignement
-    template<std::size_t _Alignof>
-    struct alignas(_AlignOf) aligned_byte
+    // Compile time log2 function.
+    // helper to calculate the index into the tuple.
+    template<std::size_t _N>
+    constexpr std::size_t log2(std::size_t _Idx = 0)
     {
-      std::byte _block;
+      if constexpr(_N)
+        return log2<(_N>>1)>(_Idx + 1);
+      else
+        return (_Idx - 1) < 0 ? 0UL : (_Idx-1);
+    }
+
+    // helper struct to customize alignement while keeping the size equal to 1
+    template<std::size_t _N>
+    struct aligned
+    {
+      using Al_1   = unsigned char;
+      using Al_2   = alignas(2)   unsigned char;
+      using Al_4   = alignas(4)   unsigned char;
+      using Al_8   = alignas(8)   unsigned char;
+      using Al_16  = alignas(16)  unsigned char;
+      using Al_32  = alignas(32)  unsigned char;
+      using Al_64  = alignas(64)  unsigned char;
+      using Al_128 = alignas(128) unsigned char;
+      using Al_256 = alignas(256) unsigned char;
+
+    #pragma GCC diagnostics push // turn off warning
+    #pragma GCC diagnostic ignored "-Wignored-attributes"
+
+      using Al_tuple = 
+      std::tuple<Al_1, Al_2, Al_4, Al_8, Al_16, Al_32, Al_64, Al_128, Al_256>;
+
+    #pragma GCC diagnostic pop // reset warning
+
+      using byte = typename std::tuple_element<log2<_N>(), Al_tuple>::type;
     };
+
+    // help type aliases
+    template<typename _Ap>
+    using __Value_type = typename std::allocator_traits<_Ap>::value_type;
+
+    template<std::size_t _AlignOf>
+    using aligned_byte = typename aligned<_N>::byte;
 
     /// @brief _Alloc_base: base class to manage allocation of the coupled
     ///        buffers.
@@ -176,11 +214,15 @@ namespace stl
     struct _Alloc_base;
 
     // Arena allocation strategy
+    // the first byte of the allocated buffer should be aligned
+    // at 1st type boundaries.
     template<typename _Alloc
-           , std::size_t _Alignof = alignof(typename _Alloc::type_value)>
+            , std::size_t _AlignOf = alignof(__Value_type<_Alloc>)>
     struct _Alloc_base<_Alloc, true>
     : public _rebind_Allocator<_Alloc, aligned_byte<_AlignOf>> 
     {
+      static_assert(0 < _AlignOf && _AlignOf <= 256, "Unsupported Alignement");
+      
       using _base_type = _rebind_Allocator<_Alloc, aligned_byte<_AlignOf>>;
       using _alloc_traits = std::allocator_traits<_base_type>;
       using value_type = typename _alloc_traits::value_type;
@@ -190,42 +232,52 @@ namespace stl
       // base type import all Ctors
       using _base_type::_base_type;
 
-      template<typename..._Ts, size_type _N = sizeof...(_Ts)>
-      auto _M_allocate(size_type _n_elem)
-                      -> std::pair<pointer, std::array<pointer, _N>>
-      {
-        std::array<size_type, _N> _M_diffs{0};
-        std::array<pointer, _N> _M_offsets{};
-        
-        // calculate total size in std::byte
-        constexpr std::array<size_type, _N> _Szof = {sizeof(_Ts)...};
-        constexpr std::array<size_type, _N> _Algnof = {alignof(_Ts)...};
-        for(size_type it = 1; it < _N; ++it)
-        {
-          auto v = _Szof[it-1] * _n_elem;
-          auto cum = v + _M_diffs[it-1];
-          if(cum % _Algnof[it] == 0)
-            _M_diffs[it] = cum;
-          else
-            _M_diffs[it] = cum + (_Algnof[it] - (cum % _Algnof[it]));
-        }
-        const size_type _n_bytes = _M_diffs.back() + _Szof.at(_N - 1) * _n_elem;
-        const pointer _M_ptr = _alloc_traits::allocate(*this, _n_bytes);
-        
-        if(_M_ptr == pointer{})
-          return {_M_ptr, _M_offsets};
+      // primary template 
+      template<typename _Tp>
+      struct _M_allocate;
 
-        std::transform(_M_diffs.begin(), _M_diffs.end(), _M_offsets.begin()
-                      , [_M_ptr](size_type offset){return _M_ptr + offset;});
-        // for(size_type it = 0; it < _N; ++it)
-        //   _M_offsets[it] = _M_ptr + _M_diffs[it];
-        return {_M_ptr, _M_offsets};
-      }
+      template<typename..._Ts>
+      struct _M_allocate<std::tuple<_Ts...>>
+      {
+        using __Pair = std::pair<pointer, std::array<pointer, sizeof...(_Ts)>>;
+        constexpr size_type _N = sizeof...(_Ts);
+
+        __Pair operator()(_base_type& __Alloc, size_type _n_elem) const
+        {          
+          constexpr std::array<size_type, _N> _Szof = {sizeof(_Ts)...};
+          constexpr std::array<size_type, _N> _Algnof = {alignof(_Ts)...};
+
+          // calculate total size in std::byte
+          std::array<size_type, _N> _M_diffs{0};
+          std::array<pointer, _N> _M_offsets{};
+
+          for(size_type it = 1; it < _N; ++it)
+          {
+            auto v = _Szof[it-1] * _n_elem;
+            auto cum = v + _M_diffs[it-1];
+            if(cum % _Algnof[it] == 0)
+              _M_diffs[it] = cum;
+            else
+              _M_diffs[it] = cum + (_Algnof[it] - (cum % _Algnof[it]));
+          }
+          const size_type _n_bytes = _M_diffs.back() + _Szof.at(_N - 1) * _n_elem;
+          const pointer _M_ptr = _alloc_traits::allocate(__Alloc, _n_bytes);
+          
+          if(_M_ptr == pointer{})
+            return {_M_ptr, _M_offsets};
+
+          std::transform(_M_diffs.begin(), _M_diffs.end(), _M_offsets.begin()
+                        , [_M_ptr](size_type offset){return _M_ptr + offset;});
+          // for(size_type it = 0; it < _N; ++it)
+          //   _M_offsets[it] = _M_ptr + _M_diffs[it];
+          return {_M_ptr, _M_offsets};
+        }
+      };
     };
 
-    // partial specialization 
-    // individual allocation strategy
-    // using void* alignement as the default allocation alignement
+    // partial specialization for individual allocation strategy
+    // using void pointer alignement as the default 
+    // allocation alignement for one byte
     template<typename _Alloc>
     struct _Alloc_base<_Alloc, false> 
     : public _rebind_Allocator<_Alloc, aligned_byte<alignof(void*)>>
@@ -237,11 +289,11 @@ namespace stl
       using size_type = typename _alloc_traits::size_type;
       
       // Assumption:
-      // alignof(_Tp) <= 255.
+      // alignof(_Tp) <= 256.
       template<typename _Tp>
       pointer _M_allocate(size_type _n_elem)
       {
-        static_assert(alignof(_Tp) > 0xFF, "Unsupport Alignement.");
+        static_assert(0 < _AlignOf && _AlignOf <= 256, "Unsupported Alignement");
 
         constexpr std::size_t _M_align_val = alignof(_byte_type);
         if constexpr (alignof(_Tp) <= _M_align_val)
@@ -273,7 +325,7 @@ namespace stl
               throw std::bad_alloc();
           }
           // for successfull realignement, store offset from new pointer.
-          // By guess work: a extended alignement of a value more than 255
+          // By guess work: a extended alignement of a value more than 256
           //    is not used, thus it is acceptable to reserve one byte
           //    to store the offset.
           const ptrdiff_t _M_offset = _M_ptr - _M_old_ptr;
@@ -289,8 +341,12 @@ namespace stl
       _M_deallocate(pointer _ptr, size_type _n_elem)
       noexcept(this->deallocate({}, {}))
       {
+        if(_ptr == pointer{})
+          return;
+
         static_assert(alignof(_Tp) > 0xFF, "Unsupported Alignement.");
         constexpr std::size_t _M_align_val = alignof(_byte_type);
+        
         if constexpr(alignof(_Tp) <= _M_align_val)
           return _alloc_traits::deallocate(*this, _ptr, _n);
         else
