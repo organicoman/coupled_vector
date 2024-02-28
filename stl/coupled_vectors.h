@@ -276,8 +276,8 @@ namespace stl
     };
 
     //  Partial specialization for individual allocation strategy
-    // using void pointer alignement as the default 
-    // allocation alignement for one byte
+    // using void pointer alignement as the default allocation alignement 
+    // for one byte, since it most likely will suite all alignement needs.
     template<typename _Alloc>
     struct _Alloc_base<_Alloc, false> 
     : public _rebind_Allocator<_Alloc, aligned_byte<alignof(void*)>>
@@ -328,13 +328,14 @@ namespace stl
               throw std::bad_alloc();
           }
           // For successfull realignement, store offset from new pointer.
-          // By guess work: a extended alignement of a value more than 256
-          //    is not used, thus it is acceptable to reserve one byte
-          //    to store the offset.
+          //  N.B: An extended alignement of a value more than 256 is 
+          // unlikely to be used, thus it is acceptable to reserve one byte
+          // to store the offset.
+          // Offset values to store in range ]0, (256-8)];
           const ptrdiff_t _M_offset = _M_ptr - _M_old_ptr;
 
-          _alloc_traits::construct(*this, _M_ptr - 1
-                                  , static_cast<std::byte>(_M_offset));
+          _alloc_traits::construct(*this, (_M_ptr - 1)
+                                  , static_cast<unsigned char>(_M_offset));
           return _M_ptr;
         }        
       }
@@ -353,7 +354,7 @@ namespace stl
         if(_ptr == pointer{})
           return;
 
-        static_assert(alignof(_Tp) > 0xFF, "Unsupported Alignement.");
+        static_assert(alignof(_Tp) > 256, "Unsupported Alignement.");
         constexpr std::size_t _M_align_val = alignof(_byte_type);
         
         if constexpr(alignof(_Tp) <= _M_align_val)
