@@ -275,7 +275,7 @@ namespace stl
       };
     };
 
-    // partial specialization for individual allocation strategy
+    //  Partial specialization for individual allocation strategy
     // using void pointer alignement as the default 
     // allocation alignement for one byte
     template<typename _Alloc>
@@ -288,8 +288,11 @@ namespace stl
       using pointer = typename _alloc_traits::pointer;
       using size_type = typename _alloc_traits::size_type;
       
-      // Assumption:
-      // alignof(_Tp) <= 256.
+      // Assumption: alignof(_Tp) <= 256.
+      //  For alignement greater than alignof(void*), we readjust the
+      // first byte address pointer to the desired alignment and we
+      // store the offset to the original pointer, in the One byte
+      // address, before the new pointer.
       template<typename _Tp>
       pointer _M_allocate(size_type _n_elem)
       {
@@ -298,7 +301,7 @@ namespace stl
         constexpr std::size_t _M_align_val = alignof(_byte_type);
         if constexpr (alignof(_Tp) <= _M_align_val)
           return _alloc_traits::allocate(*this, _n_elem * sizeof(_Tp));
-        // for any other specific alignement, we need to re-adjust the
+        //  For any other specific alignement, we need to re-adjust the
         // request byte size, and keep track of the old pointer
         else 
         {
@@ -324,7 +327,7 @@ namespace stl
             else
               throw std::bad_alloc();
           }
-          // for successfull realignement, store offset from new pointer.
+          // For successfull realignement, store offset from new pointer.
           // By guess work: a extended alignement of a value more than 256
           //    is not used, thus it is acceptable to reserve one byte
           //    to store the offset.
@@ -336,6 +339,12 @@ namespace stl
         }        
       }
 
+      //  Deallocation function, will check if the the type has greater
+      // alignement requirement than alignof(void*), if true, we read the
+      // offset value from the byte located before the pointer argument
+      // then we calculate the pointer difference to get the original
+      // pointer returned by the allocation function, then we deallocate
+      // using that pointer value.
       template<typename _Tp>
       void
       _M_deallocate(pointer _ptr, size_type _n_elem)
