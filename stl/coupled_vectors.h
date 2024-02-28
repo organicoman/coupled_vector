@@ -278,6 +278,7 @@ namespace stl
     //  Partial specialization for individual allocation strategy
     // using void pointer alignement as the default allocation alignement 
     // for one byte, since it most likely will suite all alignement needs.
+    // for extended aligmenet see comments below.
     template<typename _Alloc>
     struct _Alloc_base<_Alloc, false> 
     : public _rebind_Allocator<_Alloc, aligned_byte<alignof(void*)>>
