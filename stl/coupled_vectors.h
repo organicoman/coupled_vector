@@ -337,9 +337,12 @@ namespace stl
           // to store the offset.
           // Offset values to store in range ]0, (256-8)];
           const ptrdiff_t _M_offset = _M_ptr - _M_old_ptr;
-
-          _alloc_traits::construct(*this, (_M_ptr - 1)
-                                  , static_cast<unsigned char>(_M_offset));
+          if(_M_offset != 0 )
+            _alloc_traits::construct(*this, (_M_ptr - 1)
+                                   , static_cast<unsigned char>(_M_offset));
+          else // move forward the new pointer
+            _alloc_traits::construct(*this, ((_M_ptr+=_Align_diff) - 1)
+                                   , static_cast<unsigned char>(_M_offset));
           return _M_ptr;
         }        
       }
