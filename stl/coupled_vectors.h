@@ -140,11 +140,6 @@ namespace stl
       
     }; // _Ptrs_array_base
 
-    // helper alias type
-    template<typename _Alloc, typename _Tp>
-    using _rebind_Allocator = 
-    typename std::allocator_traits<_Alloc>::template rebind<_Tp>::other;
-    
     // Compile time log2 function.
     // helper to calculate the index into the tuple.
     template<std::size_t _N>
@@ -186,7 +181,14 @@ namespace stl
     using __Value_type = typename std::allocator_traits<_Ap>::value_type;
 
     template<std::size_t _AlignOf>
-    using aligned_byte = typename aligned<_N>::byte;
+    using aligned_byte = typename aligned<_AlignOf>::byte;
+
+    // helper alias type
+    template<typename _Alloc, std::size_t _AlignOf>
+    using _rebind_Allocator = 
+    typename std::allocator_traits<_Alloc>::template 
+                                          rebind_alloc<aligned_byte<_AlignOf>>;
+    
 
     /// @brief _Alloc_base: base class to manage allocation of the coupled
     ///        buffers.
@@ -216,14 +218,15 @@ namespace stl
     // Arena allocation strategy
     // the first byte of the allocated buffer should be aligned
     // at 1st type boundaries.
-    template<typename _Alloc
-            , std::size_t _AlignOf = alignof(__Value_type<_Alloc>)>
+    template<typename _Alloc>
     struct _Alloc_base<_Alloc, true>
-    : public _rebind_Allocator<_Alloc, aligned_byte<_AlignOf>> 
+    : public _rebind_Allocator<_Alloc, alignof(__Value_type<_Alloc>)> 
     {
-      static_assert(0 < _AlignOf && _AlignOf <= 256, "Unsupported Alignement");
+      static_assert(0 < alignof(__Value_type<_Alloc>) 
+            && alignof(__Value_type<_Alloc>) <= 256, "Unsupported Alignement");
       
-      using _base_type = _rebind_Allocator<_Alloc, aligned_byte<_AlignOf>>;
+      using _base_type = 
+        _rebind_Allocator<_Alloc, aligned_byte<alignof(__Value_type<_Alloc>)>>;
       using _alloc_traits = std::allocator_traits<_base_type>;
       using value_type = typename _alloc_traits::value_type;
       using pointer = typename _alloc_traits::pointer;
@@ -239,8 +242,8 @@ namespace stl
       template<typename..._Ts>
       struct _M_allocate<std::tuple<_Ts...>>
       {
-        using __Pair = std::pair<pointer, std::array<pointer, sizeof...(_Ts)>>;
         constexpr size_type _N = sizeof...(_Ts);
+        using __Pair = std::pair<pointer, std::array<pointer, _N>>;
 
         __Pair operator()(_base_type& __Alloc, size_type _n_elem) const
         {          
@@ -281,10 +284,10 @@ namespace stl
     // for extended aligmenet see comments below.
     template<typename _Alloc>
     struct _Alloc_base<_Alloc, false> 
-    : public _rebind_Allocator<_Alloc, aligned_byte<alignof(void*)>>
+    : public _rebind_Allocator<_Alloc, alignof(void*)>
     {
       using _byte_type = aligned_byte<alignof(void*)>;
-      using _base_type = _rebind_Allocator<_Alloc, _byte_type>;
+      using _base_type = _rebind_Allocator<_Alloc, alignof(void*)>;
       using _alloc_traits = std::allocator_traits<_base_type>;
       using pointer = typename _alloc_traits::pointer;
       using size_type = typename _alloc_traits::size_type;
@@ -297,7 +300,7 @@ namespace stl
       template<typename _Tp>
       pointer _M_allocate(size_type _n_elem)
       {
-        static_assert(0 < _AlignOf && _AlignOf <= 256, "Unsupported Alignement");
+        static_assert(0 < alignof(_Tp) && alignof(_Tp) <= 256, "Unsupported Alignement");
 
         constexpr std::size_t _M_align_val = alignof(_byte_type);
         if constexpr (alignof(_Tp) <= _M_align_val)
