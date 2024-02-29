@@ -326,7 +326,7 @@ namespace stl
             _alloc_traits::deallocate(*this, _M_ptr, _n_bytes);
             // keep the behavior of the base allocator class
             // if it throws then throw.
-            if constexpr (noexcept(this->allocate({})))
+            if constexpr (noexcept(_alloc_traits::allocate({},{})))
               return pointer();
             else
               throw std::bad_alloc();
@@ -356,7 +356,7 @@ namespace stl
       template<typename _Tp>
       void
       _M_deallocate(pointer _ptr, size_type _n_elem)
-      noexcept(this->deallocate({}, {}))
+      noexcept(_alloc_traits::deallocate({}, {}, {}))
       {
         if(_ptr == pointer{})
           return;
