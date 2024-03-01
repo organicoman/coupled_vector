@@ -73,17 +73,73 @@ namespace stl
 {
   /**
    * Vector of Structs or Struct of Vectors?
-   * coupled_vectors : is a class template to manage many vector-like buffers
-   * that are tied together.
-   * All managed buffers grow and shrink together.
-   * Adding elements works in packed form .i.e the user provide a value
-   * to each underlying buffer.
-   * Since this class manages many buffers, which are dissociated from each
-   * others, yet coupled by operations (adding, erasing, growing..etc),
-   * it makes it a good candidate for parallelism and vectorization techniques
    * 
+   * take the example of a pixel structure:
+   * Is it more efficient to write as:
+   *    std::vector<uint_32> RGBA{Size};
+   * 
+   * or split it to 04 buffers as:
+   *    std::vector<uint_8> R{Size}; 
+   *    std::vector<uint_8> G{Size}; 
+   *    std::vector<uint_8> B{Size}; 
+   *    std::vector<uint_8> A{Size};
+   * 
+   * While the first choice loads into cacheline the whole pixel data;
+   * it is not effecient to manipulate one channel (which is very common in 
+   * image manipulation softwares), and we are obliged to use bit manipulation
+   * to extract that channel; or use strides to gather the desired channel
+   * directly from cacheline.
+   * The second choice gives us more flexibilty, and open the door for
+   * Vectorization and Parallelism technics.
+   * 
+   *   The need for a container to allow us to manipulate many buffers has its
+   * advantages. The physically separated buffers are logically coupled by
+   * operations and semantics (all buffers grow and shrink by the same amount,
+   * all buffers together represent a logical idea e.g: a pixel)
+   * 
+   * So, instead of creating many std::vectors to manage these buffers, and
+   * synchronize them for any container operation, it is more effecient to keep
+   * the management in one structure.
+   *
+   * ENTER
+   *    coupled_vectors
+   *  A ;vector-like; allocator aware container to create, manipulate and process
+   * many dynamic memory buffers; of different value types; at the same time.
+   *   
    * The model is based and how GPU's work: 
    *    Many dissociated buffers vs One global threaded operation.
+   * 
+   *  The challenge here is in the allocator. 
+   * There are two allocation strategies:
+   *    1- all buffers contiguously in the same memory arean.
+   *    2- allocate each buffer individaully.
+   * 
+   *  The first strategy is subject to the number of buffers and the count of
+   * elements in each buffer. If the combined size in bytes:
+   * n_bytes = number of types * sum(sizeof(types)...)
+   * if this value exceeds what the underlying platform can provide, then
+   * after a cetrain threashold we will run out of contiguous memory.
+   * 
+   *  The second strategy is subject to the alignment requirement of each 
+   * involved value type. Since the allocator has only one type parameter 
+   * (i.e allocator<typename _Tp>; one allocator specialization for one type)
+   * this will conflicts with how to allocate many buffers of different 
+   * value types.
+   * 
+   *   The solution, opted-for in this implementation, is to decay the allocator
+   * (i.e rebind it) the an allocator of type:
+   * allocator<byte-like-type>
+   * the 'byte-like-type' object type must respect the following constraints:
+   *  - sizeof(byte-like-type) == 1
+   *  - alignof(byte-like-type) is tunnable
+   *  - std::is_same_v<byte-like-type(align_1), byte-like-type(align_2)> == false
+   *
+   * The idea here is to unify allocation for all different types, and respect
+   * each type alignment requirement (even extended-alignment types).
+   * The pointers returned by the allocators are byte-like pointers, which can
+   * easily staticaly casted back to the appropriate pointer type, since
+   * char* can be aliased to any pointer type.
+   * 
   */
 
   // primary class template
@@ -140,40 +196,36 @@ namespace stl
       
     }; // _Ptrs_array_base
 
-    // Compile time log2 function.
-    // helper to calculate the index into the tuple.
-    template<std::size_t _N>
-    constexpr std::size_t log2(std::size_t _Idx = 0)
-    {
-      if constexpr(_N)
-        return log2<(_N>>1)>(_Idx + 1);
-      else
-        return (_Idx - 1) < 0 ? 0UL : (_Idx-1);
-    }
-
+    
     // helper struct to customize alignement while keeping the size equal to 1
     template<std::size_t _N>
     struct aligned
     {
-      using Al_1   = unsigned char;
-      using Al_2   = alignas(2)   unsigned char;
-      using Al_4   = alignas(4)   unsigned char;
-      using Al_8   = alignas(8)   unsigned char;
-      using Al_16  = alignas(16)  unsigned char;
-      using Al_32  = alignas(32)  unsigned char;
-      using Al_64  = alignas(64)  unsigned char;
-      using Al_128 = alignas(128) unsigned char;
-      using Al_256 = alignas(256) unsigned char;
-
-    #pragma GCC diagnostics push // turn off warning
-    #pragma GCC diagnostic ignored "-Wignored-attributes"
+      enum struct alignas(1)   Al_1   : unsigned char{};
+      enum struct alignas(2)   Al_2   : unsigned char{};
+      enum struct alignas(4)   Al_4   : unsigned char{};
+      enum struct alignas(8)   Al_8   : unsigned char{};
+      enum struct alignas(16)  Al_16  : unsigned char{};
+      enum struct alignas(32)  Al_32  : unsigned char{};
+      enum struct alignas(64)  Al_64  : unsigned char{};
+      enum struct alignas(128) Al_128 : unsigned char{};
+      enum struct alignas(256) Al_256 : unsigned char{};
 
       using Al_tuple = 
       std::tuple<Al_1, Al_2, Al_4, Al_8, Al_16, Al_32, Al_64, Al_128, Al_256>;
 
-    #pragma GCC diagnostic pop // reset warning
+      // Compile time log2 function.
+      // helper to calculate the index into the tuple.
+      template<std::size_t _M = _N, std::size_t _Idx = 0>
+      constexpr std::size_t log2()
+      {
+        if constexpr(_M)
+          return log2<(_M>>1), (_Idx + 1)>();
+        else
+          return (_Idx - 1) < 0 ? 0UL : (_Idx-1);
+      }
 
-      using byte = typename std::tuple_element<log2<_N>(), Al_tuple>::type;
+      using byte = typename std::tuple_element<log2<>(), Al_tuple>::type;
     };
 
     // help type aliases
