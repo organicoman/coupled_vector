@@ -114,17 +114,18 @@ namespace stl
    *    1- all buffers contiguously in the same memory arean.
    *    2- allocate each buffer individaully.
    * 
-   *  The first strategy is subject to the number of buffers and the count of
-   * elements in each buffer. If the combined size in bytes:
+   *  The first strategy is subject to the memory arena size that the underlying
+   * system can provide. If the combined size in bytes:
    * n_bytes = number of types * sum(sizeof(types)...)
-   * if this value exceeds what the underlying platform can provide, then
-   * after a cetrain threashold we will run out of contiguous memory.
+   * exceeds what the underlying platform can provide, then after a cetrain 
+   * threashold we will run out of contiguous memory.
    * 
    *  The second strategy is subject to the alignment requirement of each 
    * involved value type. Since the allocator has only one type parameter 
-   * (i.e allocator<typename _Tp>; one allocator specialization for one type)
+   * (i.e allocator<typename _Tp>; one allocator specialization for each type)
    * this will conflicts with how to allocate many buffers of different 
-   * value types.
+   * value types, without duplicating the allocator instance, or keep
+   * changing it by copy-assignement, especially if the allocator is stateful.
    * 
    *   The solution, opted-for in this implementation, is to decay the allocator
    * (i.e rebind it) the an allocator of type:
@@ -136,9 +137,12 @@ namespace stl
    *
    * The idea here is to unify allocation for all different types, and respect
    * each type alignment requirement (even extended-alignment types).
-   * The pointers returned by the allocators are byte-like pointers, which can
-   * easily staticaly casted back to the appropriate pointer type, since
-   * char* can be aliased to any pointer type.
+   * Failing to do so, will sanction the allocation operation with a lot of
+   * wasted memory caused by padding to reach correct alignment.
+   * 
+   * On the other hand, pointers returned by the allocators are byte-like pointers,
+   * which can be staticaly casted back to the appropriate pointer type, since
+   * 'char*' can be aliased to any pointer type.
    * 
   */
 
