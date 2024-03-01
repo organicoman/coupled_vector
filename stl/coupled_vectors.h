@@ -144,6 +144,14 @@ namespace stl
    * which can be staticaly casted back to the appropriate pointer type, since
    * 'char*' can be aliased to any pointer type.
    * 
+   *   Switching between the two allocation strategies, is a matter of discussion.
+   * So, is it more appropriate to delegate it to the user to setup the value
+   * of the size threshold after which allocation switch from
+   * 'Arena' to 'Spread' and back. Or let the Implementation decide which
+   * strategy to choose. 
+   *  1- But what criteria should the implementation use to decide?
+   *  2- Also, should this threshold value, be a template parameter, or
+   *     a constructor paramter?
   */
 
   // primary class template
