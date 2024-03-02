@@ -285,22 +285,26 @@ namespace stl
       using _base_type::_base_type;
 
       [[nodiscard]]
-      _Alloc_base& _M_get_allocator() noexcept
+      _Alloc_base& 
+      _M_get_allocator() noexcept
       { return *this; }
 
       [[nodiscrad]]
-      const _Alloc_base& _M_get_allocator() const noexcept
+      const _Alloc_base& 
+      _M_get_allocator() const noexcept
       { return *this; }
 
       template<typename _Tail>
-      [[nodiscard]] constexpr size_type
+      [[nodiscard]]
+      constexpr size_type
       _M_byte_size(size_type __last_offset, size_type __n_elem) const
       {
         return __last_offset + (__n_elem * sizeof(_Tail)); 
       }
 
       template<typename..._Ts>
-      [[nodiscard]] constexpr auto 
+      [[nodiscard]] 
+      constexpr auto 
       _M_nbytes_and_offsets(size_type _n_elem) const ->
             std::tuple<size_type, std::array<size_type, sizeof...(_Ts)>>
       {       
@@ -361,6 +365,37 @@ namespace stl
       {
         return _M_allocate_hlpr<_Tuple>{}(_n_elem);
       }
+
+      template<typename..._Ts>
+      struct _M_deallocate_hlpr
+      {
+        void operator()(pointer _ptr, size_type _n_elem) const
+        {
+          auto [_n_bytes, _M_diffs] = 
+            _M_nbytes_and_offsets<_Ts...>(_n_elem);
+          return _alloc_traits::deallocate(_M_get_allocator(),_ptr, _n_bytes);~
+        }
+      };
+
+      template<typename..._Ts>
+      struct _M_deallocate_hlpr<std::tuple<_Ts...>>
+      {
+        void operator()(pointer _ptr, size_type _n_elem) const
+        {
+          auto [_n_bytes, _M_diffs] = 
+            _M_nbytes_and_offsets<_Ts...>(_n_elem);
+          return _alloc_traits::deallocate(_M_get_allocator(), _ptr, _n_bytes);
+        }
+      };
+
+      template<typename _Tuple>
+      void
+      _M_deallocate(pointer _ptr, size_type _n_elem)
+        noexcept(noexcept(_alloc_traits::deallocate({}, {}, {})))
+      {
+        return _M_deallocate_hlpr<_Tuple>{}(_ptr, _n_elem);
+      }
+
       
     };
 
@@ -377,6 +412,16 @@ namespace stl
       using _alloc_traits = std::allocator_traits<_base_type>;
       using pointer = typename _alloc_traits::pointer;
       using size_type = typename _alloc_traits::size_type;
+
+      [[nodiscard]]
+      _Alloc_base& 
+      _M_get_allocator() noexcept
+      { return *this; }
+
+      [[nodiscard]]
+      const _Alloc_base& 
+      _M_get_allocator() const noexcept
+      { return *this; }
       
       // Assumption: alignof(_Tp) <= 256.
       //  For alignement greater than alignof(void*), we readjust the
@@ -384,17 +429,19 @@ namespace stl
       // store the offset to the original pointer, in the One byte
       // address, before the new pointer.
       template<typename _Tp>
-      [[nodiscard]] constexpr auto _M_allocate(size_type _n_elem) ->
-        std::tuple<size_type, std::array<pointer, 1>>
+      [[nodiscard]] 
+      constexpr pointer 
+      _M_allocate(size_type _n_elem)
       {
-        static_assert(0 < alignof(_Tp) && alignof(_Tp) <= 256, "Unsupported Alignement");
+        static_assert(0 < alignof(_Tp) && alignof(_Tp) <= 256
+                    , "Unsupported Alignement");
 
         constexpr std::size_t _M_align_val = alignof(_byte_type);
         if constexpr (alignof(_Tp) <= _M_align_val)
         {
           constexpr size_type _n_bytes = _n_elem * sizeof(_Tp);
           pointer _M_ptr = _alloc_traits::allocate(*this, _n_bytes);
-          return {_n_bytes, {_M_ptr}};
+          return _M_ptr;
         }
           
         //  For any other specific alignement, we need to re-adjust the
@@ -405,21 +452,21 @@ namespace stl
           size_type _n_bytes = _n_elem * sizeof(_Tp) + _Align_diff;
           const auto _old_n = _n_bytes;
           
-          pointer _M_ptr = _alloc_traits::allocate(*this, _n_bytes);
+          pointer _M_ptr = _alloc_traits::allocate(_M_get_allocator(), _n_bytes);
           // failed allocation
           if(_M_ptr == pointer{})
-            return {0, pointer{}};
+            return pointer{};
 
           // adjust pointer according to alignement
           const pointer _M_old_ptr = _M_ptr;
           if(not std::align(alignof(_Tp), sizeof(_Tp)
                       , static_cast<void*&>(_M_ptr), _n_bytes))
           {
-            _alloc_traits::deallocate(*this, _M_ptr, _n_bytes);
+            _alloc_traits::deallocate(_M_get_allocator(), _M_ptr, _n_bytes);
             // keep the behavior of the base allocator class
             // if it throws then throw.
             if constexpr (noexcept(_alloc_traits::allocate({},{})))
-              return {0,pointer()};
+              return pointer();
             else
               throw std::bad_alloc();
           }
@@ -430,12 +477,13 @@ namespace stl
           // Offset values to store in range ]0, (256-8)];
           const ptrdiff_t _M_offset = _M_ptr - _M_old_ptr;
           if(_M_offset != 0 )
-            _alloc_traits::construct(*this, (_M_ptr - 1)
+            _alloc_traits::construct(_M_get_allocator(), (_M_ptr - 1)
                                    , static_cast<unsigned char>(_M_offset));
           else // move forward the new pointer
-            _alloc_traits::construct(*this, ((_M_ptr+=_Align_diff) - 1)
-                                   , static_cast<unsigned char>(_M_offset));
-          return {_n_bytes_M_ptr;
+            _alloc_traits::construct(_M_get_allocator(), 
+            ((_M_ptr+=_Align_diff) - 1), static_cast<unsigned char>(_M_offset));
+
+          return _M_ptr;
         }        
       }
 
@@ -448,16 +496,17 @@ namespace stl
       template<typename _Tp>
       void
       _M_deallocate(pointer _ptr, size_type _n_elem)
-      noexcept(_alloc_traits::deallocate({}, {}, {}))
+        noexcept(noexcept(_alloc_traits::deallocate({}, {}, {})))
       {
         if(_ptr == pointer{})
           return;
 
-        static_assert(alignof(_Tp) > 256, "Unsupported Alignement.");
+        static_assert( 0 < alignof(_Tp) && alignof(_Tp) <= 256
+                    , "Unsupported Alignement.");
         constexpr std::size_t _M_align_val = alignof(_byte_type);
         
         if constexpr(alignof(_Tp) <= _M_align_val)
-          return _alloc_traits::deallocate(*this, _ptr, _n);
+          return _alloc_traits::deallocate(_M_get_allocator(), _ptr, _n);
         else
         {
           const size_type _Align_diff = alignof(_Tp) - _M_align_val;
@@ -465,7 +514,7 @@ namespace stl
           // read the stored value
           const ptrdiff_t _M_offset = static_cast<ptrdiff_t>(*(_ptr - 1));
           pointer _M_ptr = _ptr - _M_offset;
-          _alloc_traits::deallocate(*this, _M_ptr, _n_bytes);
+          _alloc_traits::deallocate(_M_get_allocator(), _M_ptr, _n_bytes);
           return;
         }
       }
