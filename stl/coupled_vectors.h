@@ -284,6 +284,14 @@ namespace stl
       // base type import all Ctors
       using _base_type::_base_type;
 
+      [[nodiscard]]
+      _Alloc_base& _M_get_allocator() noexcept
+      { return *this; }
+
+      [[nodiscrad]]
+      const _Alloc_base& _M_get_allocator() const noexcept
+      { return *this; }
+
       template<typename _Tail>
       [[nodiscard]] constexpr size_type
       _M_byte_size(size_type __last_offset, size_type __n_elem) const
@@ -292,8 +300,9 @@ namespace stl
       }
 
       template<typename..._Ts>
-      [[nodiscard]] auto _M_allocate(size_type _n_elem) ->
-            std::tuple<size_type, std::array<pointer, sizeof...(_Ts)>>
+      [[nodiscard]] constexpr auto 
+      _M_nbytes_and_offsets(size_type _n_elem) const ->
+            std::tuple<size_type, std::array<size_type, sizeof...(_Ts)>>
       {       
         constexpr std::size_t _N = sizeof...(_Ts);
         static_assert(_N != 0, "At least one type must be provided!");
@@ -303,7 +312,6 @@ namespace stl
 
         // calculate total size in std::byte
         std::array<size_type, _N> _M_diffs{0};
-        std::array<pointer, _N> _M_offsets{};
 
         for(size_type it = 1; it < _N; ++it)
         {
@@ -319,14 +327,15 @@ namespace stl
           typename std::tuple_element<_N - 1, std::tuple<_Ts...>>::type;
 
         const size_type _n_bytes = _M_byte_size<_Tail>(_M_diffs.back(), _n_elem);
-        const pointer _M_ptr = _alloc_traits::allocate(__Alloc, _n_bytes);
-        
-        if(_M_ptr == pointer{})
-          return {_M_ptr, _M_offsets};
+        return {_n_bytes, _M_diffs};
+      }
 
-        std::transform(_M_diffs.begin(), _M_diffs.end(), _M_offsets.begin()
-                      , [_M_ptr](size_type offset){return _M_ptr + offset;});
-        return {_n_bytes, _M_offsets};
+      template<typenae..._Ts>
+      [[nodiscard]]
+      constexpr pointer _M_allocate(size_type _n_elem)
+      {
+        auto [_n_bytes, _M_diffs] = _M_nbytes_and_offsets<_Ts...>(_n_elem);
+        return  _alloc_traits::allocate(_M_get_allocator(), _n_bytes);
       }
     };
 
@@ -350,25 +359,31 @@ namespace stl
       // store the offset to the original pointer, in the One byte
       // address, before the new pointer.
       template<typename _Tp>
-      pointer _M_allocate(size_type _n_elem)
+      [[nodiscard]] constexpr auto _M_allocate(size_type _n_elem) ->
+        std::tuple<size_type, std::array<pointer, 1>>
       {
         static_assert(0 < alignof(_Tp) && alignof(_Tp) <= 256, "Unsupported Alignement");
 
         constexpr std::size_t _M_align_val = alignof(_byte_type);
         if constexpr (alignof(_Tp) <= _M_align_val)
-          return _alloc_traits::allocate(*this, _n_elem * sizeof(_Tp));
+        {
+          constexpr size_type _n_bytes = _n_elem * sizeof(_Tp);
+          pointer _M_ptr = _alloc_traits::allocate(*this, _n_bytes);
+          return {_n_bytes, {_M_ptr}};
+        }
+          
         //  For any other specific alignement, we need to re-adjust the
         // request byte size, and keep track of the old pointer
         else 
         {
-          const size_type _Align_diff = alignof(_Tp) - _M_align_val;
+          constexpr size_type _Align_diff = alignof(_Tp) - _M_align_val;
           size_type _n_bytes = _n_elem * sizeof(_Tp) + _Align_diff;
           const auto _old_n = _n_bytes;
           
           pointer _M_ptr = _alloc_traits::allocate(*this, _n_bytes);
           // failed allocation
           if(_M_ptr == pointer{})
-            return pointer{};
+            return {0, pointer{}};
 
           // adjust pointer according to alignement
           const pointer _M_old_ptr = _M_ptr;
@@ -379,7 +394,7 @@ namespace stl
             // keep the behavior of the base allocator class
             // if it throws then throw.
             if constexpr (noexcept(_alloc_traits::allocate({},{})))
-              return pointer();
+              return {0,pointer()};
             else
               throw std::bad_alloc();
           }
@@ -395,7 +410,7 @@ namespace stl
           else // move forward the new pointer
             _alloc_traits::construct(*this, ((_M_ptr+=_Align_diff) - 1)
                                    , static_cast<unsigned char>(_M_offset));
-          return _M_ptr;
+          return {_n_bytes_M_ptr;
         }        
       }
 
