@@ -66,8 +66,6 @@
 #include <vector>
 #include <algorithm> // std::transform
 
-// Works for GCC only
-// GCC ver >= 13.1
 // __cplusplus >= 17
 namespace stl
 {
@@ -144,14 +142,6 @@ namespace stl
    * which can be staticaly casted back to the appropriate pointer type, since
    * 'char*' can be aliased to any pointer type.
    * 
-   *   Switching between the two allocation strategies, is a matter of discussion.
-   * So, is it more appropriate to delegate it to the user to setup the value
-   * of the size threshold after which allocation switch from
-   * 'Arena' to 'Spread' and back. Or let the Implementation decide which
-   * strategy to choose. 
-   *  1- But what criteria should the implementation use to decide?
-   *  2- Also, should this threshold value, be a template parameter, or
-   *     a constructor paramter?
   */
 
   // primary class template
@@ -166,7 +156,7 @@ namespace stl
 
   namespace __detail
   {    
-    /// @brief _Ptrs_array_base: A base class storing the start pointers
+    /// @brief _Ptrs_array_base: A base class storing pointers to the first byte
     ///        to several buffers.
     ///        The idea here, is to store pointers to buffers of different types,
     ///        and since the std::array accepts only one type as a typed template
@@ -174,7 +164,7 @@ namespace stl
     ///        Later on when we need to access the elements of the buffers,
     ///        we static cast back to the original data type.
     /// @tparam N : an unsigned integer representing the number of coupled
-    ///         vectors.
+    ///         bufferss.
     template<std::size_t _Nm>
     struct _Ptrs_array_base :  std::array<void*, _Nm>
     {
@@ -185,7 +175,7 @@ namespace stl
 
       template<typename _Ptr_t>
       constexpr 
-      explicit _Ptrs_array_base(std::array<_Ptr_t, _Nm> const& __arr)
+      _Ptrs_array_base(std::array<_Ptr_t, _Nm> const& __arr)
       {
         static_assert(std::is_pointer_v<_Ptr_t>
                     , "all args must be of pointer-type to data store.");
@@ -204,10 +194,8 @@ namespace stl
                       "to the predefined size of this struct");
         static_assert(std::is_pointer_v<_Ptr_t>&& ...
                     , "all args must be of pointer-type to data store.");
-      }
-      
+      }      
     }; // _Ptrs_array_base
-
     
     // helper struct to customize alignement while keeping the size equal to 1
     template<std::size_t _N>
@@ -240,19 +228,17 @@ namespace stl
       using byte = typename std::tuple_element<log2<>(), Al_tuple>::type;
     };
 
-    // help type aliases
+    // helper type aliases
     template<typename _Ap>
     using __Value_type = typename std::allocator_traits<_Ap>::value_type;
 
     template<std::size_t _AlignOf>
-    using aligned_byte = typename aligned<_AlignOf>::byte;
+    using _aligned_byte = typename aligned<_AlignOf>::byte;
 
     // helper alias type
     template<typename _Alloc, std::size_t _AlignOf>
     using _rebind_Allocator = 
-    typename std::allocator_traits<_Alloc>::template 
-                                          rebind_alloc<aligned_byte<_AlignOf>>;
-    
+    typename std::allocator_traits<_Alloc>::rebind_alloc<_aligned_byte<_AlignOf>>;    
 
     /// @brief _Alloc_base: base class to manage allocation of the coupled
     ///        buffers.
@@ -289,8 +275,7 @@ namespace stl
       static_assert(0 < alignof(__Value_type<_Alloc>) 
             && alignof(__Value_type<_Alloc>) <= 256, "Unsupported Alignement");
       
-      using _base_type = 
-        _rebind_Allocator<_Alloc, aligned_byte<alignof(__Value_type<_Alloc>)>>;
+      using _base_type = _rebind_Allocator<_Alloc, alignof(__Value_type<_Alloc>)>
       using _alloc_traits = std::allocator_traits<_base_type>;
       using value_type = typename _alloc_traits::value_type;
       using pointer = typename _alloc_traits::pointer;
@@ -299,47 +284,50 @@ namespace stl
       // base type import all Ctors
       using _base_type::_base_type;
 
-      // primary template 
-      template<typename _Tp>
-      struct _M_allocate;
+      template<typename _Tail>
+      [[nodiscard]] constexpr size_type
+      _M_byte_size(size_type __last_offset, size_type __n_elem) const
+      {
+        return __last_offset + (__n_elem * sizeof(_Tail)); 
+      }
 
       template<typename..._Ts>
-      struct _M_allocate<std::tuple<_Ts...>>
-      {
-        constexpr size_type _N = sizeof...(_Ts);
-        using __Pair = std::pair<pointer, std::array<pointer, _N>>;
+      [[nodiscard]] auto _M_allocate(size_type _n_elem) ->
+            std::tuple<size_type, std::array<pointer, sizeof...(_Ts)>>
+      {       
+        constexpr std::size_t _N = sizeof...(_Ts);
+        static_assert(_N != 0, "At least one type must be provided!");
 
-        __Pair operator()(_base_type& __Alloc, size_type _n_elem) const
-        {          
-          constexpr std::array<size_type, _N> _Szof = {sizeof(_Ts)...};
-          constexpr std::array<size_type, _N> _Algnof = {alignof(_Ts)...};
+        constexpr std::array<size_type, _N> _Szof = {sizeof(_Ts)...};
+        constexpr std::array<size_type, _N> _Algnof = {alignof(_Ts)...};
 
-          // calculate total size in std::byte
-          std::array<size_type, _N> _M_diffs{0};
-          std::array<pointer, _N> _M_offsets{};
+        // calculate total size in std::byte
+        std::array<size_type, _N> _M_diffs{0};
+        std::array<pointer, _N> _M_offsets{};
 
-          for(size_type it = 1; it < _N; ++it)
-          {
-            auto v = _Szof[it-1] * _n_elem;
-            auto cum = v + _M_diffs[it-1];
-            if(cum % _Algnof[it] == 0)
-              _M_diffs[it] = cum;
-            else
-              _M_diffs[it] = cum + (_Algnof[it] - (cum % _Algnof[it]));
-          }
-          const size_type _n_bytes = _M_diffs.back() + _Szof.at(_N - 1) * _n_elem;
-          const pointer _M_ptr = _alloc_traits::allocate(__Alloc, _n_bytes);
-          
-          if(_M_ptr == pointer{})
-            return {_M_ptr, _M_offsets};
-
-          std::transform(_M_diffs.begin(), _M_diffs.end(), _M_offsets.begin()
-                        , [_M_ptr](size_type offset){return _M_ptr + offset;});
-          // for(size_type it = 0; it < _N; ++it)
-          //   _M_offsets[it] = _M_ptr + _M_diffs[it];
-          return {_M_ptr, _M_offsets};
+        for(size_type it = 1; it < _N; ++it)
+        {
+          auto v = _Szof[it-1] * _n_elem;
+          auto cum = v + _M_diffs[it-1];
+          if(cum % _Algnof[it] == 0)
+            _M_diffs[it] = cum;
+          else
+            _M_diffs[it] = cum + (_Algnof[it] - (cum % _Algnof[it]));
         }
-      };
+        // tail type
+        using _Tail = 
+          typename std::tuple_element<_N - 1, std::tuple<_Ts...>>::type;
+
+        const size_type _n_bytes = _M_byte_size<_Tail>(_M_diffs.back(), _n_elem);
+        const pointer _M_ptr = _alloc_traits::allocate(__Alloc, _n_bytes);
+        
+        if(_M_ptr == pointer{})
+          return {_M_ptr, _M_offsets};
+
+        std::transform(_M_diffs.begin(), _M_diffs.end(), _M_offsets.begin()
+                      , [_M_ptr](size_type offset){return _M_ptr + offset;});
+        return {_n_bytes, _M_offsets};
+      }
     };
 
     //  Partial specialization for individual allocation strategy
