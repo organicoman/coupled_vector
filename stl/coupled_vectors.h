@@ -330,13 +330,38 @@ namespace stl
         return {_n_bytes, _M_diffs};
       }
 
-      template<typenae..._Ts>
-      [[nodiscard]]
-      constexpr pointer _M_allocate(size_type _n_elem)
+      template<typename..._Ts>
+      struct _M_allocate_hlpr
       {
-        auto [_n_bytes, _M_diffs] = _M_nbytes_and_offsets<_Ts...>(_n_elem);
-        return  _alloc_traits::allocate(_M_get_allocator(), _n_bytes);
+        [[nodiscard]]
+        constexpr pointer 
+        operator()(size_type _n_elem) const
+        {
+          auto [_n_bytes, _M_diffs] = _M_nbytes_and_offsets<_Ts...>(_n_elem);
+          return  _alloc_traits::allocate(_M_get_allocator(), _n_bytes);
+        }
+      };
+
+      template<typename..._Ts>
+      struct _M_allocate_hlpr<std::tuple<_Ts...>>
+      {
+        [[nodiscard]]
+        constexpr pointer 
+        operator()(size_type _n_elem) const
+        {
+          auto [_n_bytes, _M_diffs] = _M_nbytes_and_offsets<_Ts...>(_n_elem);
+          return  _alloc_traits::allocate(_M_get_allocator(), _n_bytes);
+        }
+      };
+
+      template<typename _Tuple>
+      [[nodiscard]]
+      constexpr pointer
+      _M_allocate(size_type _n_elem)
+      {
+        return _M_allocate_hlpr<_Tuple>{}(_n_elem);
       }
+      
     };
 
     //  Partial specialization for individual allocation strategy
