@@ -540,22 +540,28 @@ namespace stl
       _M_deallocate(pointer _ptr, size_type _n_elem)
         noexcept(noexcept(_alloc_traits::deallocate({}, {}, {})))
       {
-        if(_ptr == pointer{})
-          return;
-
         static_assert( 0 < alignof(_Tp) && alignof(_Tp) <= 256
                     , "Unsupported Alignement.");
-        constexpr size_type _Align_diff = alignof(_Tp) - alignof(_byte_type);
-        constexpr size_type _n_bytes = _n_elem * sizeof(_Tp) + _Align_diff;
+        if(_ptr == pointer{})
+          return;
         
-        if constexpr(_Align_diff <= 0)
-          return _alloc_traits::deallocate(_M_get_allocator(), _ptr, _n);
+        constexpr size_type _Align_diff = alignof(_Tp) - alignof(_byte_type);
+        constexpr size_type _n_bytes = _n_elem * sizeof(_Tp);
+        // original alloator is stateless.
+        if constexpr (std::allocator_traits<_Alloc>::is_always_equal{})
+        {
+          auto& __other = _rebind_Allocator<_Alloc, alignof(_Tp)>;
+          return _alloc_traits::deallocate(__other, _ptr, _n_bytes);
+        }
+        else if constexpr(_Align_diff <= 0)
+          return _alloc_traits::deallocate(_M_get_allocator(), _ptr, _n_bytes);
         else
         {          
           // read the stored value
+          const size_type _n_bytes_ext = _n_elem * sizeof(_Tp) + _Align_diff;
           const auto _M_offset = static_cast<unsigned char>(*(_ptr - 1));
           pointer _M_ptr = _ptr - _M_offset;
-          _alloc_traits::deallocate(_M_get_allocator(), _M_ptr, _n_bytes);
+          _alloc_traits::deallocate(_M_get_allocator(), _M_ptr, _n_bytes_ext);
           return;
         }
       }
@@ -564,9 +570,14 @@ namespace stl
     /**
      * 
     */
-    template<typename _Alloc, typename... _Ts>
+    template<typename _Base_alloc, typename... _Ts>
     struct _couplvecs_Impl
-    :public _Alloc_base<_Alloc>;
+    : public _Base_alloc, _Ptrs_array_base<sizeof...(_Ts)>
+    {};
+
+    template<bool _Use_arena, typename _Alloc, typename... _Ts>
+    struct _couplvecs_Impl<_Alloc_base<_Alloc, _Use_arena>, _Ts...>
+  
     
   } // namespace __detail
 }// namespace stl
