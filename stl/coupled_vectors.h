@@ -553,8 +553,7 @@ namespace stl
         else
         {          
           // read the stored value
-          using _diff_type = typename _alloc_traits::difference_type;
-          const auto _M_offset = static_cast<_diff_type>(*(_ptr - 1));
+          const auto _M_offset = static_cast<unsigned char>(*(_ptr - 1));
           pointer _M_ptr = _ptr - _M_offset;
           _alloc_traits::deallocate(_M_get_allocator(), _M_ptr, _n_bytes);
           return;
