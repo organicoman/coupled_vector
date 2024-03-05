@@ -347,7 +347,43 @@ namespace stl
           constexpr _diff_type _Align_diff = alignof(_Tp) - alignof(_byte_type);
           if constexpr(_Align_diff > 0)
           {
+            /*
+            * For alignment not cover by default implementation we need to be 
+            * able to retrieve the original pointer before alignement correction
+            * thus we store an offset factor into the original pointer.
+            */  
+            // adjusted number of byte for correct alignement
+            constexpr std::size_t _n_bytes_adj = _n_bytes + _Align_diff;
+            _ptr_type _ptr = _self.allocate(_n_bytes_adj);
+            if(_ptr == _ptr_type{})
+              return _ptr;
+            // realign original pointer
+            const _ptr_type _origin_ptr = _ptr;
+            if(not std::align(alignof(_Tp), sizeof(_Tp), _ptr, _n_bytes_adj))
+            {
+              _self.deallocate(_ptr, _n_bytes);
+              // keep the original allocator exception behavior
+              if constexpr(noexcept(_self.allocate({})))
+                return _ptr_type{}; //nullable ptr
+              else
+                throw std::bad_alloc{};
+            }
+            /*
+            * since the general rule for alignement is to use power of 2 values
+            * we can prove that there is one integer x > 3 where 2^x = 8 * n
+            * a multiple of 8. That is any alignement >= 8 could be expressed
+            * by an alignement of 8.
+            * we will store only the factor into one byte memory.
+            */ 
+            _diff_type _factor = (_ptr - _origin_ptr) / 8;
+            if(_factor != 0 )
+              _self.construct(reinterpret_cast<char*>(_ptr - 1)
+                            , static_cast<char>(_factor));
+            else // move forward the new pointer
+              _self.construct(reinterpret_cast<char*>((_ptr+=_Align_diff) - 1)
+                            , static_cast<char>(_factor));
 
+            return _ptr;
           }
           else
             return _self.allocate(_n_bytes);
