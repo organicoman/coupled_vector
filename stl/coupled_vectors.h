@@ -225,10 +225,9 @@ namespace stl
     // for 'byte' type.
     // The idea is to have an allocator that allocates One byte at different
     // alignement.
-    template<typename _Alloc, std::size_t _AlignOf>
+    template<typename _Alloc, typename _Byte_type>
     using _rebind_Allocator = 
-    typename std::allocator_traits<_Alloc>
-                ::rebind_alloc<_aligned_byte<_AlignOf>>;    
+      typename std::allocator_traits<_Alloc>::rebind_alloc<_Byte_type>;    
 
     /// @brief _Alloc_base: base class to manage allocation of the coupled
     ///        buffers.
@@ -253,21 +252,26 @@ namespace stl
     ///         buffers sizes. 
     ///         _Spread: for individual allocations by at least buffer size.
     
-    enum __memory_policy { _Arena = true, _Spread  = false};
-    // primary base class
-    template<typename _Allocator, __memory_policy _Policy>
-    struct _Alloc_base;
-
-    // _Alloc_base : implementation for Arena-allocation policy
     template<typename _Alloc>
-    struct _Alloc_base<_Alloc, __memory_policy::_Arena>
-    : public _rebind_Allocator<_Alloc, alignof(void*)> 
+    struct _Alloc_base
+    : public _rebind_Allocator<_Alloc, aligned_byte<alignof(void*)>> 
     {
-      using _base_type = _rebind_Allocator<_Alloc, alignof(void*)>
+      private:
+      enum __memory_policy { _Spread  = false, _Arena = true};
+      enum __Enum { _Stateless, _Statefull };
+
+      public:
+      using _byte_type = aligned_byte<alignof(void*)>;
+      using _base_type = _rebind_Allocator<_Alloc, _byte_type>
       using _alloc_traits = std::allocator_traits<_base_type>;
-      using value_type = typename _alloc_traits::value_type;
-      using pointer = typename _alloc_traits::pointer;
-      using size_type = typename _alloc_traits::size_type;
+      using _value_type = typename _alloc_traits::value_type;
+      using _ptr_type = typename _alloc_traits::pointer;
+      using _size_type = typename _alloc_traits::size_type;
+      using _diff_type = typename _alloc_traits::difference_type;
+
+      /**
+       * concret class implementation
+      */
 
       // base type import all Ctors
       using _base_type::_base_type;
@@ -280,123 +284,166 @@ namespace stl
       _M_get_allocator() const noexcept
       { return *this; }
 
-      template<typename _Tail>
-      constexpr size_type
-      _M_byte_size(size_type __last_offset, size_type __n_elem) const
-      {
-        return __last_offset + (__n_elem * sizeof(_Tail)); 
-      }
-
-      template<typename..._Ts>
-      constexpr auto 
-      _M_nbytes_and_offsets(size_type _n_elem) const ->
-            std::tuple<size_type, std::array<size_type, sizeof...(_Ts)>>
-      {       
-        constexpr std::size_t _N = sizeof...(_Ts);
-        static_assert(_N != 0, "At least one type must be provided!");
-
-        constexpr std::array<size_type, _N> _Szof = {sizeof(_Ts)...};
-        constexpr std::array<size_type, _N> _Algnof = {alignof(_Ts)...};
-
-        // calculate total size in std::byte
-        std::array<size_type, _N> _M_diffs{0};
-
-        for(size_type it = 1; it < _N; ++it)
-        {
-          auto v = _Szof[it-1] * _n_elem;
-          auto cum = v + _M_diffs[it-1];
-          if(cum % _Algnof[it] == 0)
-            _M_diffs[it] = cum;
-          else
-            _M_diffs[it] = cum + (_Algnof[it] - (cum % _Algnof[it]));
-        }
-        // tail type
-        using _Tail = 
-          typename std::tuple_element<_N - 1, std::tuple<_Ts...>>::type;
-
-        const size_type _n_bytes = _M_byte_size<_Tail>(_M_diffs.back(), _n_elem);
-        return {_n_bytes, _M_diffs};
-      }
-
-      template<typename..._Ts>
-      struct _M_allocate_hlpr
-      {
-        [[nodiscard]]
-        constexpr 
-        pointer 
-        operator()(size_type _n_elem) const
-        {
-          auto [_n_bytes, _M_diffs] = _M_nbytes_and_offsets<_Ts...>(_n_elem);
-          return  _alloc_traits::allocate(_M_get_allocator(), _n_bytes);
-        }
-      };
-
-      template<typename..._Ts>
-      struct _M_allocate_hlpr<std::tuple<_Ts...>>
-      {
-        [[nodiscard]]
-        constexpr 
-        pointer 
-        operator()(size_type _n_elem) const
-        {
-          auto [_n_bytes, _M_diffs] = _M_nbytes_and_offsets<_Ts...>(_n_elem);
-          return  _alloc_traits::allocate(_M_get_allocator(), _n_bytes);
-        }
-      };
-
       template<typename _Tuple>
+      using _Tuple_head = typename std::tuple_element<0, _Tuple>::type;
+
+      template<typename _Tp, __memory_policy _Policy>
       [[nodiscard]]
-      constexpr 
-      pointer
-      _M_allocate(size_type _n_elem)
+      constexpr
+      _ptr_type
+      _M_allocate(_size_type _n_elem) 
+        noexcept(noexcept(_base_type{}.allocate({})))
+      try
       {
-        try
+        auto _Self = _M_get_allocator();
+        if constexpr(_Policy == __memory_policy::_Arena)
         {
-          return _M_allocate_hlpr<_Tuple>{}(_n_elem);
+          using _Tuple = _Tp;
+          // stateless original allocator
+          if constexpr(std::allocator_traits<_Alloc>::is_always_equal{})
+            return _Allocate_hlpr<_Tuple, __Enum::_Stateless>{}(_Self, _n_elem);
+          else 
+            return _Allocate_hlpr<_Tuple, __Enum::_Statefull>{}(_Self, _n_elem);
         }
-        catch(...)
+        else
         {
-          // propagate exception
-          throw;
+          // stateless original allocator
+          if constexpr(std::allocator_traits<_Alloc>::is_always_equal{})
+            return _Allocate_hlpr<_Tp, __Enum::_Stateless>{}(_Self, _n_elem);
+          else 
+            return _Allocate_hlpr<_Tp, __Enum::_Statefull>{}(_Self, _n_elem);
         }
       }
-
-      template<typename..._Ts>
-      struct _M_deallocate_hlpr
+      catch(...) // function-try-block
       {
-        constexpr 
-        void 
-        operator()(pointer _ptr, size_type _n_elem) const noexcept
-        {
-          auto [_n_bytes, _M_diffs] = 
-            _M_nbytes_and_offsets<_Ts...>(_n_elem);
-          return _alloc_traits::deallocate(_M_get_allocator(),_ptr, _n_bytes);~
-        }
-      };
+        throw;
+      }
 
-      template<typename..._Ts>
-      struct _M_deallocate_hlpr<std::tuple<_Ts...>>
-      {
-        constexpr
-        void
-        operator()(pointer _ptr, size_type _n_elem) const noexcept
-        {
-          auto [_n_bytes, _M_diffs] = 
-            _M_nbytes_and_offsets<_Ts...>(_n_elem);
-          return _alloc_traits::deallocate(_M_get_allocator(), _ptr, _n_bytes);
-        }
-      };
-
-      // as per C++ standard; deallocate is noexcept
-      template<typename _Tuple>
+      template<typename _Tp, __memory_policy _Policy>
       constexpr
       void
-      _M_deallocate(pointer _ptr, size_type _n_elem) noexcept
+      _M_deallocate(_ptr_type& _ptr, _size_type _n_elem)
+        noexcept(true)
       {
-        return _M_deallocate_hlpr<_Tuple>{}(_ptr, _n_elem);
+        auto _Self = _M_get_allocator();
+
+        if constexpr(_Policy == __memory_policy::_Arena)
+        {
+          using _Tuple = _Tp;
+          // stateless original allocator
+          if constexpr(std::allocator_traits<_Alloc>::is_always_equal{})
+            return _Deallocate_hlpr<_Tuple, __Enum::_Stateless>{}(_Self, _n_elem);
+          else 
+            return _Deallocate_hlpr<_Tuple, __Enum::_Statefull>{}(_Self, _n_elem);
+        }
+        else
+        {
+          // stateless original allocator
+          if constexpr(std::allocator_traits<_Alloc>::is_always_equal{})
+            return _Deallocate_hlpr<_Tp, __Enum::_Stateless>{}(_Self, _n_elem);
+          else 
+            return _Deallocate_hlpr<_Tp, __Enum::_Statefull>{}(_Self, _n_elem);
+        }
       }
 
-      
+      /**
+       * helper classes implementation
+      */
+
+      template<__memory_policy _Policy>
+      struct _Alloc_base_Impl
+      {
+        template<typename _Tail>
+        constexpr size_type
+        _M_byte_size(size_type __last_offset, size_type __n_elem) const
+        {
+          return __last_offset + (__n_elem * sizeof(_Tail)); 
+        }
+
+        template<typename..._Ts>
+        constexpr auto 
+        _M_nbytes_and_offsets(size_type _n_elem) const ->
+              std::tuple<size_type, std::array<size_type, sizeof...(_Ts)>>
+        {       
+          constexpr std::size_t _N = sizeof...(_Ts);
+          static_assert(_N != 0, "At least one type must be provided!");
+
+          constexpr std::array<size_type, _N> _Szof = {sizeof(_Ts)...};
+          constexpr std::array<size_type, _N> _Algnof = {alignof(_Ts)...};
+
+          // calculate total size in std::byte
+          std::array<size_type, _N> _M_diffs{0};
+
+          for(size_type it = 1; it < _N; ++it)
+          {
+            auto v = _Szof[it-1] * _n_elem;
+            auto cum = v + _M_diffs[it-1];
+            if(cum % _Algnof[it] == 0)
+              _M_diffs[it] = cum;
+            else
+              _M_diffs[it] = cum + (_Algnof[it] - (cum % _Algnof[it]));
+          }
+          // tail type
+          using _Tail = 
+            typename std::tuple_element<_N - 1, std::tuple<_Ts...>>::type;
+
+          const size_type _n_bytes = _M_byte_size<_Tail>(_M_diffs.back(), _n_elem);
+          return {_n_bytes, _M_diffs};
+        }
+
+        template<typename..._Ts>
+        struct _M_allocate_hlpr
+        {
+          [[nodiscard]]
+          constexpr 
+          pointer 
+          operator()(size_type _n_elem) const
+          {
+            auto [_n_bytes, _M_diffs] = _M_nbytes_and_offsets<_Ts...>(_n_elem);
+            return _alloc_traits::allocate(_M_get_allocator(), _n_bytes);
+          }
+        };
+
+        template<typename..._Ts>
+        struct _M_allocate_hlpr<std::tuple<_Ts...>>
+        {
+          [[nodiscard]]
+          constexpr 
+          pointer 
+          operator()(size_type _n_elem) const
+          {
+            auto [_n_bytes, _M_diffs] = _M_nbytes_and_offsets<_Ts...>(_n_elem);
+            return _alloc_traits::allocate(_M_get_allocator(), _n_bytes);
+          }
+        };
+
+
+        template<typename..._Ts>
+        struct _M_deallocate_hlpr
+        {
+          constexpr 
+          void 
+          operator()(pointer _ptr, size_type _n_elem) const noexcept
+          {
+            auto [_n_bytes, _M_diffs] = 
+              _M_nbytes_and_offsets<_Ts...>(_n_elem);
+            return _alloc_traits::deallocate(_M_get_allocator(),_ptr, _n_bytes);~
+          }
+        };
+
+        template<typename..._Ts>
+        struct _M_deallocate_hlpr<std::tuple<_Ts...>>
+        {
+          constexpr
+          void
+          operator()(pointer _ptr, size_type _n_elem) const noexcept
+          {
+            auto [_n_bytes, _M_diffs] = 
+              _M_nbytes_and_offsets<_Ts...>(_n_elem);
+            return _alloc_traits::deallocate(_M_get_allocator(), _ptr, _n_bytes);
+          }
+        };
+      };
     };
 
     // _Alloc_base : implementation for Spread-allocation policy
@@ -536,9 +583,9 @@ namespace stl
     template<typename _Base_alloc, typename... _Ts>
     struct _couplvecs_Impl;
 
-    template<bool _Use_arena, typename _Alloc, typename... _Ts>
-    struct _couplvecs_Impl<_Alloc_base<_Alloc, _Use_arena>, _Ts...>
-    : public _Alloc_base<_Alloc, _Use_arena>
+    template<__memory_policy _Policy, typename _Alloc, typename... _Ts>
+    struct _couplvecs_Impl<_Alloc_base<_Alloc, _Policy>, _Ts...>
+    : public _Alloc_base<_Alloc, _Policy>
     , protected _Ptrs_array_base<_Ts...>
     {
 
