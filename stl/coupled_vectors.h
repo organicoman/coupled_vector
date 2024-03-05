@@ -299,19 +299,11 @@ namespace stl
         if constexpr(_Policy == __memory_policy::_Arena)
         {
           using _Tuple = _Tp;
-          // stateless original allocator
-          if constexpr(std::allocator_traits<_Alloc>::is_always_equal{})
-            return _Allocate_hlpr<_Tuple, __Enum::_Stateless>{}(_Self, _n_elem);
-          else 
-            return _Allocate_hlpr<_Tuple, __Enum::_Statefull>{}(_Self, _n_elem);
+          return _Allocate_hlpr<_Tuplel>{}(_Self, _n_elem);
         }
         else
         {
-          // stateless original allocator
-          if constexpr(std::allocator_traits<_Alloc>::is_always_equal{})
-            return _Allocate_hlpr<_Tp, __Enum::_Stateless>{}(_Self, _n_elem);
-          else 
-            return _Allocate_hlpr<_Tp, __Enum::_Statefull>{}(_Self, _n_elem);
+          return _Allocate_hlpr<_Tp>{}(_Self, _n_elem);
         }
       }
       catch(...) // function-try-block
@@ -331,24 +323,46 @@ namespace stl
         {
           using _Tuple = _Tp;
           // stateless original allocator
-          if constexpr(std::allocator_traits<_Alloc>::is_always_equal{})
-            return _Deallocate_hlpr<_Tuple, __Enum::_Stateless>{}(_Self, _n_elem);
-          else 
-            return _Deallocate_hlpr<_Tuple, __Enum::_Statefull>{}(_Self, _n_elem);
+          return _Deallocate_hlpr<_Tuple>{}(_Self, _n_elem);
         }
         else
         {
-          // stateless original allocator
-          if constexpr(std::allocator_traits<_Alloc>::is_always_equal{})
-            return _Deallocate_hlpr<_Tp, __Enum::_Stateless>{}(_Self, _n_elem);
-          else 
-            return _Deallocate_hlpr<_Tp, __Enum::_Statefull>{}(_Self, _n_elem);
+          return _Deallocate_hlpr<_Tp>{}(_Self, _n_elem);
         }
       }
 
       /**
        * helper classes implementation
       */
+      template<typename _Tp>
+      struct _Allocate_hlpr
+      {
+        [[nodiscard]]
+        constexpr
+        _ptr_type
+        operator()(_Alloc_base& _self, size_type _n_elem)
+        try
+        {
+          constexpr std::size_t _n_bytes = _n_elem * sizeof(_Tp);
+          constexpr _diff_type _Align_diff = alignof(_Tp) - alignof(_byte_type);
+          if constexpr(_Align_diff > 0)
+          {
+
+          }
+          else
+            return _self.allocate(_n_bytes);
+        }
+        catch(...)
+        {// propagate exception
+          throw;
+        }
+      };
+
+      template<typename... _Ts, __Enum _Alloc_type>
+      struct _Allocate_hlpr<std::tuple<_Ts...>, _Alloc_type>
+      {
+
+      };
 
       template<__memory_policy _Policy>
       struct _Alloc_base_Impl
