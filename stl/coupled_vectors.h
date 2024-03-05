@@ -64,6 +64,7 @@
 #include <cstddef> // std::byte
 #include <tuple>
 #include <vector>
+#include <variant>
 #include <algorithm> // std::transform
 
 // __cplusplus >= 17
@@ -149,11 +150,6 @@ namespace stl
   class couplvecs : public std::vector<_Tp, _Alloc>
   { };
 
-  // partial specialization
-  // std::pair is a special case of std::tuple
-  template<typename..._Ts, typename _Alloc>
-  class couplvecs<std::tuple<_Ts...>, _Alloc>;
-
   namespace __detail
   {    
     /// @brief _Ptrs_array_base: A base class storing pointers to the first byte
@@ -196,37 +192,6 @@ namespace stl
                     , "all args must be of pointer-type to data store.");
       }      
     }; // _Ptrs_array_base
-    
-    // helper struct to customize alignement while keeping the size equal to 1
-    template<std::size_t _N>
-    struct aligned
-    {
-      enum struct alignas(1)   Al_1   : unsigned char{};
-      enum struct alignas(2)   Al_2   : unsigned char{};
-      enum struct alignas(4)   Al_4   : unsigned char{};
-      enum struct alignas(8)   Al_8   : unsigned char{};
-      enum struct alignas(16)  Al_16  : unsigned char{};
-      enum struct alignas(32)  Al_32  : unsigned char{};
-      enum struct alignas(64)  Al_64  : unsigned char{};
-      enum struct alignas(128) Al_128 : unsigned char{};
-      enum struct alignas(256) Al_256 : unsigned char{};
-
-      using Al_tuple = 
-      std::tuple<Al_1, Al_2, Al_4, Al_8, Al_16, Al_32, Al_64, Al_128, Al_256>;
-
-      // Compile time log2 function.
-      // helper to calculate the index into the tuple.
-      template<std::size_t _M = _N, std::size_t _Idx = 0>
-      constexpr std::size_t log2()
-      {
-        if constexpr(_M)
-          return log2<(_M>>1), (_Idx + 1)>();
-        else
-          return (_Idx - 1) < 0 ? 0UL : (_Idx-1);
-      }
-
-      using byte = typename std::tuple_element<log2<>(), Al_tuple>::type;
-    };
 
     // helper type aliases
     template<typename _Alloc>
@@ -245,51 +210,60 @@ namespace stl
     template<typename _Alloc>
     using _get_value_type = typename __Value_type<_Alloc>::__type;
 
+    // helper struct to customize alignement while keeping the size equal to 1
+    // using an Alignement value not supported by the implementation is UB.
+    template<std::size_t _N>
+    struct aligned
+    {
+      using byte = struct alignas(_N) type{};      
+    };
+
     template<std::size_t _AlignOf>
     using _aligned_byte = typename aligned<_AlignOf>::byte;
 
-    // helper alias type
+    // helper alias type to rebind any allocator to its similar duplicate but
+    // for 'byte' type.
+    // The idea is to have an allocator that allocates One byte at different
+    // alignement.
     template<typename _Alloc, std::size_t _AlignOf>
     using _rebind_Allocator = 
-    typename std::allocator_traits<_Alloc>::rebind_alloc<_aligned_byte<_AlignOf>>;    
+    typename std::allocator_traits<_Alloc>
+                ::rebind_alloc<_aligned_byte<_AlignOf>>;    
 
     /// @brief _Alloc_base: base class to manage allocation of the coupled
     ///        buffers.
-    ///        Two strategies could be used; either allocate a contiguous arena
+    ///        Two policies could be used; either allocate a contiguous arena
     ///        to hold all buffers, Or allocate the necessary size for each
     ///        buffer separatly. The minimum size to switch from arena to
-    ///        individual buffers, needs to be mesured for effeciency.
-    ///        When using arena strategy, the buffer allocated must be aligned
-    ///        at the first type boundary .i.e (alignas(_Tp0)).
+    ///        individual buffers, is user given.
+    ///        The Arena policy is good for locality and cache hits. But
+    ///        could raise std::bad_array_new_length exception if the system
+    ///        cannot provide the requested size.
     /// @tparam _Alloc: allocator type. 
-    ///         For Arena (_Use_arena = true) allocation strategy, we rebind
+    ///         For Arena allocation policy, we rebind
     ///         this allocator to std::byte type, to reserve a contiguous chunck
     ///         of memory, then we assign each coupled buffer its appropriate
     ///         partition of memory from this arena (type alignment 
     ///         and padding must be respected between each buffer's partition
-    ///         when calculating each partition size and begin pointer.).
-    ///         For Individual buffers allocation (_Use_arena = false), we
-    ///         allocate each buffer array separately, respecting alignment.
-    /// @tparam _Use_arena: bool value. True for allocating an Arena where
-    ///         all buffers live together. False for individual allocations
-    ///         for each buffer.
+    ///         when calculating each partition size and begin pointer).
+    ///         For spread buffers allocation policy, we allocate each 
+    ///         buffer array separately, respecting alignment.
+    /// @tparam _Policy: __memory_policy enum value. 
+    ///         _Arena: for allocating an Arena greater or equal to the sum of 
+    ///         buffers sizes. 
+    ///         _Spread: for individual allocations by at least buffer size.
     
+    enum __memory_policy { _Arena = true, _Spread  = false};
     // primary base class
-    template<typename _Allocator, bool _Arena_or_Spread>
+    template<typename _Allocator, __memory_policy _Policy>
     struct _Alloc_base;
 
-    // Arena-allocation strategy
-    // the first byte of the allocated buffer should be aligned
-    // at 1st type boundaries.
+    // _Alloc_base : implementation for Arena-allocation policy
     template<typename _Alloc>
-    struct _Alloc_base<_Alloc, true>
-    : public _rebind_Allocator<_Alloc, alignof(_get_value_type<_Alloc>)> 
+    struct _Alloc_base<_Alloc, __memory_policy::_Arena>
+    : public _rebind_Allocator<_Alloc, alignof(void*)> 
     {
-      static_assert(0 < alignof(_get_value_type<_Alloc>) 
-        && alignof(_get_value_type<_Alloc>) <= 256, "Unsupported Alignement");
-      
-      using _base_type =
-        _rebind_Allocator<_Alloc, alignof(_get_value_type<_Alloc>)>
+      using _base_type = _rebind_Allocator<_Alloc, alignof(void*)>
       using _alloc_traits = std::allocator_traits<_base_type>;
       using value_type = typename _alloc_traits::value_type;
       using pointer = typename _alloc_traits::pointer;
@@ -425,12 +399,9 @@ namespace stl
       
     };
 
-    //  Partial specialization for spread-allocation strategy
-    // using void pointer alignement as the default allocation alignement 
-    // for one byte, since it most likely will suite all alignement needs.
-    // for extended aligmenet see comments below.
+    // _Alloc_base : implementation for Spread-allocation policy
     template<typename _Alloc>
-    struct _Alloc_base<_Alloc, false> 
+    struct _Alloc_base<_Alloc, __memory_policy::_Spread> 
     : public _rebind_Allocator<_Alloc, alignof(void*)>
     {
       using _byte_type = aligned_byte<alignof(void*)>;
@@ -447,26 +418,20 @@ namespace stl
       _M_get_allocator() const noexcept
       { return *this; }
       
-      // Assumption: alignof(_Tp) <= 256.
-      //  For alignement greater than alignof(void*), we readjust the
-      // first byte address pointer to the desired alignment and we
-      // store the offset to the original pointer, in the One byte
-      // address, before the new pointer.
       template<typename _Tp>
       [[nodiscard]] 
       constexpr pointer 
       _M_allocate(size_type _n_elem)
       {
-        static_assert(0 < alignof(_Tp) && alignof(_Tp) <= 256
-                    , "Unsupported Alignement");
         constexpr typename _alloc_traits::difference_type _Align_diff 
           = alignof(_Tp) - alignof(_byte_type);
 
         constexpr size_type _n_bytes = _n_elem * sizeof(_Tp);
-        // the original allocator is stateless
+
+        // case Where original allocator is stateless
         if constexpr (std::allocator_traits<_Alloc>::is_always_equal{})
         {
-          auto& __other = _rebind_Allocator<_Alloc, alignof(_Tp)>;
+          auto __other = _rebind_Allocator<_Alloc, alignof(_Tp)>{};
           return _alloc_traits::allocate(__other, _n_bytes);
         }
         else if constexpr (_Align_diff <= 0)
@@ -503,22 +468,22 @@ namespace stl
               // keep the behavior of the base allocator class
               // if it throws then throw.
               if constexpr (noexcept(_alloc_traits::allocate({},{})))
-                return pointer();
+                return pointer{};
               else
                 throw std::bad_alloc();
             }
-            // For successfull realignement, store offset from new pointer.
-            //  N.B: An extended alignement of a value more than 256 is 
-            // unlikely to be used, thus it is acceptable to reserve one byte
-            // to store the offset.
-            // Offset values in range ]0, (256-8)];
-            const ptrdiff_t _M_offset = _M_ptr - _M_old_ptr;
-            if(_M_offset != 0 )
+            // since the general rule for alignement is to use power of 2 values
+            // we can prove that there is one integer x > 3 where 2^x = 8 * n
+            // a multiple of 8. That is any alignement >= 8 could be expressed
+            // by an alignement of 8.
+            // we will store only the factor into one byte memory.
+            ptrdiff_t _M_factor = (_M_ptr - _M_old_ptr) / 8;
+            if(_M_factor != 0 )
               _alloc_traits::construct(_M_get_allocator(), (_M_ptr - 1)
-                                    , static_cast<unsigned char>(_M_offset));
+                                    , static_cast<char>(_M_factor));
             else // move forward the new pointer
               _alloc_traits::construct(_M_get_allocator(), 
-              ((_M_ptr+=_Align_diff) - 1), static_cast<unsigned char>(_M_offset));
+              ((_M_ptr+=_Align_diff) - 1), static_cast<char>(_M_factor));
 
             return _M_ptr;
           }
@@ -540,8 +505,6 @@ namespace stl
       _M_deallocate(pointer _ptr, size_type _n_elem)
         noexcept(noexcept(_alloc_traits::deallocate({}, {}, {})))
       {
-        static_assert( 0 < alignof(_Tp) && alignof(_Tp) <= 256
-                    , "Unsupported Alignement.");
         if(_ptr == pointer{})
           return;
         
@@ -559,8 +522,8 @@ namespace stl
         {          
           // read the stored value
           const size_type _n_bytes_ext = _n_elem * sizeof(_Tp) + _Align_diff;
-          const auto _M_offset = static_cast<unsigned char>(*(_ptr - 1));
-          pointer _M_ptr = _ptr - _M_offset;
+          const auto _M_factor = static_cast<char>(*(_ptr - 1));
+          pointer _M_ptr = _ptr - (_M_factor * 8);
           _alloc_traits::deallocate(_M_get_allocator(), _M_ptr, _n_bytes_ext);
           return;
         }
@@ -571,14 +534,56 @@ namespace stl
      * 
     */
     template<typename _Base_alloc, typename... _Ts>
-    struct _couplvecs_Impl
-    : public _Base_alloc, _Ptrs_array_base<sizeof...(_Ts)>
-    {};
+    struct _couplvecs_Impl;
 
     template<bool _Use_arena, typename _Alloc, typename... _Ts>
     struct _couplvecs_Impl<_Alloc_base<_Alloc, _Use_arena>, _Ts...>
-  
-    
+    : public _Alloc_base<_Alloc, _Use_arena>
+    , protected _Ptrs_array_base<_Ts...>
+    {
+
+    };  
+
+    template<typename _Alloc, typename ..._Ts>
+    using _couplvecs_arena_Impl = 
+      _couplvecs_Impl<_Alloc_base<_Alloc, true>, _Ts...>;
+
+    template<typename _Alloc, typename ..._Ts>
+    using _couplvecs_spread_Impl = 
+      _couplvecs_Impl<_Alloc_base<_Alloc, false>, _Ts...>;
+
+    template<typename _Alloc, typename ..._Ts>
+    using _couplvecs_variant_t = 
+      std::variant<_couplvecs_arena_Impl<_Alloc, _Ts...>
+                 , _couplvecs_spread_Impl<_Alloc, _Ts...>>;
   } // namespace __detail
+
+  
+  // partial specialization
+  // std::pair is a special case of std::tuple
+  template<typename..._Ts, typename _Alloc>
+  class couplvecs<std::tuple<_Ts...>, _Alloc>
+  {
+    _couplvecs_variant_t _M_data;
+    std::size_t          _M_mem_sz;
+
+    /**
+     * typedefs
+    */
+    public:
+    using value_type = std::tuple<_Ts...>;
+
+
+    // Ctors
+    public:
+    template<std::size_t _max_mem_size>
+    couplvecs() noexcept
+    : _M_data(__detail::_couplvecs_arena_Impl<_Alloc, _Ts...>)
+    , _M_mem_sz(_max_mem_size)
+    { }
+
+  };
+
+
 }// namespace stl
 #endif // _COUPLED_VECTORS_H
