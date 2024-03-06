@@ -648,9 +648,9 @@ namespace stl
     template<std::size_t _Idx>
     using channel_const_iterator= std::tuple_element_t<_Idx, const_iterator>;
 
-
-    // Ctors
+    
    public:
+    // Member functions
 
     /**
      * @tparam _Mem_max_size : 
@@ -663,6 +663,215 @@ namespace stl
     , _M_mem_sz(_max_mem_size)
     { }
 
+    // Element access
+    [[deprecated("NotImplemented")]]
+    constexpr reference
+    at(size_type _Idx)
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr const_reference
+    at(size_type _Idx) const
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr reference
+    operator[](size_type _Idx)
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr const_reference
+    operator[](size_type _Idx) const
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr reference
+    front() noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr const_reference
+    front() const noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr reference
+    back() noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr const_reference
+    back() const noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr pointer
+    data() noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr const_pointer
+    data() const noexcept
+    { }
+
+    // Iterators
+    [[deprecated("NotImplemented")]]
+    constexpr iterator
+    begin() noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr const_iterator
+    begin() const noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr const_iterator
+    cbegin() const noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr iterator
+    end() noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr const_iterator
+    end() const noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr const_iterator
+    cend() const noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr reverse_iterator
+    rbegin() noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr const_reverse_iterator
+    rbegin() const noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr const_reverse_iterator
+    crbegin() const noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr reverse_iterator
+    rend() noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr const_reverse_iterator
+    rend() const noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr const_reverse_iterator
+    crend() const noexcept
+    { }
+
+    // Capacity
+    [[deprecated("NotImplemented")]]
+    constexpr bool
+    empty() const noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr size_type
+    size() const noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr size_type
+    max_size() const noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr void
+    reserve(size_type _n_elem)
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr size_type
+    capacity() const noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr bool
+    squeeze() noexcept
+    { }
+    // Modifiers
+    [[deprecated("NotImplemented")]]
+    constexpr void
+    clear() noexcept
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr void
+    insert()
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr void
+    insert_range()
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr void
+    emplace()
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr void
+    erase()
+    { }
+    
+    [[deprecated("NotImplemented")]]
+    void push_back(const_reference _val)
+    { }
+
+    [[deprecated("NotImplemented")]]
+    void push_back(value_type&& _rval)
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr void
+    append_range()
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr void
+    pop_back()
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr void
+    resize()
+    { }
+
+    [[deprecated("NotImplemented")]]
+    constexpr void
+    swap()
+    { }
+
+    // Non-member functions
+    [[deprecated("NotImplemented")]]
+    friend bool operator==(const couplvecs& lft, const couplvecs& rht)
+    { }
+
+    [[deprecated("NotImplemented")]]
+    friend bool operator!=(const couplvecs& lft, const couplvecs& rht)
+    { return not (lft == rht); }
+
+    [[deprecated("NotImplemented")]]
+    friend std::swap(couplvecs& lft, couplvecs rht)
+    { }
+    
   };
 
 
