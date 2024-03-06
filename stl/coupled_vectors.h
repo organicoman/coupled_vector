@@ -586,11 +586,15 @@ namespace stl
      * 
     */
     template<typename _Alloc, typename... _Ts>
-    struct _couplvecs_Impl
-    : public _Alloc_base<_Alloc>
-    , protected _Ptrs_array_base<_Ts...>
+    struct _couplvecs_Impl: _Alloc_base<_Alloc>, _Ptrs_array_base<_Ts...>
     {
+      using _allocator_type = _Alloc_base<_Alloc>;
 
+      template<typename _Tp>
+      struct _iterator;
+
+      template<typename _Tp>
+      struct _const_iterator;
     };
   } // namespace __detail
 
@@ -599,20 +603,61 @@ namespace stl
   // std::pair is a special case of std::tuple
   template<typename..._Ts, typename _Alloc>
   class couplvecs<std::tuple<_Ts...>, _Alloc>
+    : private __detail::_couplvecs_Impl<_Alloc, _Ts...>
   {
-    _couplvecs_variant_t _M_data;
-    std::size_t          _M_mem_sz;
+    // data members.
+    std::size_t _m_max_arena;
 
     /**
      * typedefs
     */
-    public:
-    using value_type = std::tuple<_Ts...>;
+   private:
+    using __base_type  = __detail::_couplvecs_Impl<_Alloc, _Ts...>;
+    using __base_alloc = typename __base_type::_allocator_type;
+    
+    template<typename _T>
+    using __iterator   = typename __base_type::template _iterator<_T>;
+
+    template<typename _T>
+    using __const_iter = typename __base_type::template _const_iterator<_T> ;
+
+   public:
+    using allocator_type        = __base_alloc;
+    using size_type             = std::size_t;
+    using difference_type       = std::ptrdiff_t;
+    using value_type            = std::tuple<_Ts...>;
+    using reference             = std::tuple<_Ts&...>;
+    using const_reference       = std::tuple<const _Ts&...>;
+    using pointer               = std::tuple<_Ts*...>;
+    using const_pointer         = std::tuple<const _Ts*...>;
+    using iterator              = std::tuple<__iterator<_Ts>...>;
+    using const_iterator        = std::tuple<__const_iter<_Ts>...>;
+
+    template<std::size_t _Idx>
+    using channel_val_type      = std::tuple_element_t<_Idx, value_type>;
+    template<std::size_t _Idx>
+    using channel_ref           = std::tuple_element_t<_Idx, reference>;
+    template<std::size_t _Idx>
+    using channel_const_ref     = std::tuple_element_t<_Idx, const_reference>;
+    template<std::size_t _Idx>
+    using channel_pointer       = std::tuple_element_t<_Idx, pointer>;
+    template<std::size_t _Idx>
+    using const_channel_pointer = std::tuple_element_t<_Idx, const_pointer>;    
+    template<std::size_t _Idx>
+    using channel_iterator      = std::tuple_element_t<_Idx, iterator>;
+    template<std::size_t _Idx>
+    using channel_const_iterator= std::tuple_element_t<_Idx, const_iterator>;
 
 
     // Ctors
-    public:
-    template<std::size_t _max_mem_size>
+   public:
+
+    /**
+     * @tparam _Mem_max_size : 
+     *         maximum memory allowed, for Arena allocation policy, after which
+     *         the implementation switchs to allocating each buffer separratly.
+    */
+    template<std::size_t _Mem_max_size>
     couplvecs() noexcept
     : _M_data(__detail::_couplvecs_arena_Impl<_Alloc, _Ts...>)
     , _M_mem_sz(_max_mem_size)
