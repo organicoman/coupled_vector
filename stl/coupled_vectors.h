@@ -371,7 +371,7 @@ namespace stl
             /*
             * since the general rule for alignement is to use power of 2 values
             * we can prove that there is one integer x > 3 where 2^x = 8 * n
-            * a multiple of 8. That is any alignement >= 8 could be expressed
+            * a multiple of 8. That is; any alignement >= 8 could be expressed
             * by an alignement of 8.
             * we will store only the factor into one byte memory.
             */ 
@@ -379,10 +379,8 @@ namespace stl
             if(_factor != 0 )
               _self.construct(reinterpret_cast<char*>(_ptr - 1)
                             , static_cast<char>(_factor));
-            else // move forward the new pointer
-              _self.construct(reinterpret_cast<char*>((_ptr+=_Align_diff) - 1)
-                            , static_cast<char>(_factor));
-
+            else
+            { }// nothing to do, the pointer is already aligned
             return _ptr;
           }
           else
@@ -397,12 +395,7 @@ namespace stl
       template<typename... _Ts, __Enum _Alloc_type>
       struct _Allocate_hlpr<std::tuple<_Ts...>, _Alloc_type>
       {
-
-      };
-
-      template<__memory_policy _Policy>
-      struct _Alloc_base_Impl
-      {
+        // helper functions
         template<typename _Tail>
         constexpr size_type
         _M_byte_size(size_type __last_offset, size_type __n_elem) const
@@ -421,17 +414,18 @@ namespace stl
           constexpr std::array<size_type, _N> _Szof = {sizeof(_Ts)...};
           constexpr std::array<size_type, _N> _Algnof = {alignof(_Ts)...};
 
-          // calculate total size in std::byte
+          // calculate total size in bytes
           std::array<size_type, _N> _M_diffs{0};
 
           for(size_type it = 1; it < _N; ++it)
           {
             auto v = _Szof[it-1] * _n_elem;
             auto cum = v + _M_diffs[it-1];
-            if(cum % _Algnof[it] == 0)
+            auto mod = _Algnof[it] < alignof(_byte_type) ? alignof(_byte_type) : _Algnof[it];
+            if(cum % mod == 0)
               _M_diffs[it] = cum;
             else
-              _M_diffs[it] = cum + (_Algnof[it] - (cum % _Algnof[it]));
+              _M_diffs[it] = cum + (mod - (cum % mod));
           }
           // tail type
           using _Tail = 
@@ -440,6 +434,29 @@ namespace stl
           const size_type _n_bytes = _M_byte_size<_Tail>(_M_diffs.back(), _n_elem);
           return {_n_bytes, _M_diffs};
         }
+
+        // implementation
+        [[nodiscard]]
+        constexpr
+        _ptr_type
+        operator()(_Alloc_base& _self, size_type _n_elem)
+        try
+        {
+          using _1st_type = _Tuple_head<std::tuple<_Ts...>>;
+          constexpr std::size_t _n_bytes = _n_elem * sizeof(_1st_type);
+          constexpr _diff_type 
+            _Align_diff = alignof(_1st_type) - alignof(_byte_type);
+        }
+        catch(...)
+        {// propagate exception
+          throw;
+        }
+      };
+
+      template<__memory_policy _Policy>
+      struct _Alloc_base_Impl
+      {
+        
 
         template<typename..._Ts>
         struct _M_allocate_hlpr
