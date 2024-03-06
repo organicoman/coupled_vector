@@ -234,23 +234,20 @@ namespace stl
     ///        Two policies could be used; either allocate a contiguous arena
     ///        to hold all buffers, Or allocate the necessary size for each
     ///        buffer separatly. The minimum size to switch from arena to
-    ///        individual buffers, is user given.
+    ///        individual buffers, is user provided in derived class.
     ///        The Arena policy is good for locality and cache hits. But
     ///        could raise std::bad_array_new_length exception if the system
     ///        cannot provide the requested size.
     /// @tparam _Alloc: allocator type. 
-    ///         For Arena allocation policy, we rebind
-    ///         this allocator to std::byte type, to reserve a contiguous chunck
-    ///         of memory, then we assign each coupled buffer its appropriate
-    ///         partition of memory from this arena (type alignment 
-    ///         and padding must be respected between each buffer's partition
-    ///         when calculating each partition size and begin pointer).
-    ///         For spread buffers allocation policy, we allocate each 
-    ///         buffer array separately, respecting alignment.
-    /// @tparam _Policy: __memory_policy enum value. 
-    ///         _Arena: for allocating an Arena greater or equal to the sum of 
-    ///         buffers sizes. 
-    ///         _Spread: for individual allocations by at least buffer size.
+    ///         We rebind this allocator to 'unsinged char' type aligned at 
+    ///         alignof(void*) memory boundaries.
+    ///         For arena policy : we allocate a contiguous array of memory, 
+    ///         then we calculate the offset of each coupled-buffer from the
+    ///         start of the array (type alignment and padding must
+    ///         be respected between each buffer's partition when calculating
+    ///         each partition size and begin pointer).
+    ///         For spread policy : We allocate each buffer's memory array 
+    ///         separately, respecting alignment.
     
     template<typename _Alloc>
     struct _Alloc_base
@@ -258,7 +255,6 @@ namespace stl
     {
       private:
       enum __memory_policy { _Spread  = false, _Arena = true};
-      enum __Enum { _Stateless, _Statefull };
 
       public:
       using _byte_type = aligned_byte<alignof(void*)>;
