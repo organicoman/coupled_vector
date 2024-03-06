@@ -307,13 +307,13 @@ namespace stl
         {
           using _Tuple = _Tp;
           static_assert(__is_tuple_v<_Tuple>
-              , "_M_allocate() for Arena policy takes a std::tuple type.");
+              , "_M_allocate() for Arena policy takes a tuple-like type.");
           return _Allocate_hlpr<_Tuple>{}(_Self, _n_elem);
         }
         if constexpr(_Policy == __memory_policy::_Spread)
         {
           static_assert(not __is_tuple_v<_Tp>
-          ,"_M_allocate() for Spread policy takes a non std::tuple like type.");
+          ,"_M_allocate() for Spread policy takes a non tuple-like type.");
           return _Allocate_hlpr<_Tp>{}(_Self, _n_elem);
         }
         // should not be reached.
@@ -336,13 +336,13 @@ namespace stl
         {
           using _Tuple = _Tp;
           static_assert(__is_tuple_v<_Tuple>
-              , "_M_deallocate() for Arena policy takes a std::tuple type.");
+              , "_M_deallocate() for Arena policy takes a tuple-like type.");
           return _Deallocate_hlpr<_Tuple>{}(_Self, _n_elem);
         }
         if constexpr(_Policy == __memory_policy::_Spread)
         {
           static_assert(not __is_tuple_v<_Tp>
-          ,"_M_deallocate() for Spread policy takes a non std::tuple like type.");
+          ,"_M_deallocate() for Spread policy takes a non tuple-like type.");
           return _Deallocate_hlpr<_Tp>{}(_Self, _n_elem);
         }
         // should not be reached.
