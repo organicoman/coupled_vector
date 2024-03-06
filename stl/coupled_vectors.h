@@ -227,7 +227,18 @@ namespace stl
     // alignement.
     template<typename _Alloc, typename _Byte_type>
     using _rebind_Allocator = 
-      typename std::allocator_traits<_Alloc>::rebind_alloc<_Byte_type>;    
+      typename std::allocator_traits<_Alloc>::rebind_alloc<_Byte_type>; 
+
+    // type traits to detect if a type is a tuple (pair is also a tuple)
+    template<typename _Tp>
+    struct __is_tuple : std::false_type{};
+    template<typename...Ts>
+    struct __is_tuple<std::tuple<Ts...>> : std::true_type{};
+    template<typename T, typename V>
+    struct __is_tuple<std::pair<T,V>>: std::true_type{};
+
+    template<typename T>
+    inline constexpr bool __is_tuple_v = __is_tuple<T>::value;   
 
     /// @brief _Alloc_base: base class to manage allocation of the coupled
     ///        buffers.
@@ -257,16 +268,16 @@ namespace stl
       enum __memory_policy { _Spread  = false, _Arena = true};
 
       public:
-      using _byte_type = aligned_byte<alignof(void*)>;
-      using _base_type = _rebind_Allocator<_Alloc, _byte_type>
+      using _byte_type    = aligned_byte<alignof(void*)>;
+      using _base_type    = _rebind_Allocator<_Alloc, _byte_type>
       using _alloc_traits = std::allocator_traits<_base_type>;
-      using _value_type = typename _alloc_traits::value_type;
-      using _ptr_type = typename _alloc_traits::pointer;
-      using _size_type = typename _alloc_traits::size_type;
-      using _diff_type = typename _alloc_traits::difference_type;
+      using _value_type   = typename _alloc_traits::value_type;
+      using _ptr_type     = typename _alloc_traits::pointer;
+      using _size_type    = typename _alloc_traits::size_type;
+      using _diff_type    = typename _alloc_traits::difference_type;
 
       /**
-       * concret class implementation
+       * class implementation
       */
 
       // base type import all Ctors
@@ -295,12 +306,18 @@ namespace stl
         if constexpr(_Policy == __memory_policy::_Arena)
         {
           using _Tuple = _Tp;
-          return _Allocate_hlpr<_Tuplel>{}(_Self, _n_elem);
+          static_assert(__is_tuple_v<_Tuple>
+              , "_M_allocate() for Arena policy takes a std::tuple type.");
+          return _Allocate_hlpr<_Tuple>{}(_Self, _n_elem);
         }
-        else
+        if constexpr(_Policy == __memory_policy::_Spread)
         {
+          static_assert(not __is_tuple_v<_Tp>
+          ,"_M_allocate() for Spread policy takes a non std::tuple like type.");
           return _Allocate_hlpr<_Tp>{}(_Self, _n_elem);
         }
+        // should not be reached.
+        throw;
       }
       catch(...) // function-try-block
       {
@@ -318,13 +335,18 @@ namespace stl
         if constexpr(_Policy == __memory_policy::_Arena)
         {
           using _Tuple = _Tp;
-          // stateless original allocator
+          static_assert(__is_tuple_v<_Tuple>
+              , "_M_deallocate() for Arena policy takes a std::tuple type.");
           return _Deallocate_hlpr<_Tuple>{}(_Self, _n_elem);
         }
-        else
+        if constexpr(_Policy == __memory_policy::_Spread)
         {
+          static_assert(not __is_tuple_v<_Tp>
+          ,"_M_deallocate() for Spread policy takes a non std::tuple like type.");
           return _Deallocate_hlpr<_Tp>{}(_Self, _n_elem);
         }
+        // should not be reached.
+        throw;
       }
 
       /**
