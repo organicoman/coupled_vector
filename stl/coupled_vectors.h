@@ -348,7 +348,7 @@ namespace stl
           if constexpr(_Align_diff > 0)
           {
             /*
-            * For alignment not cover by default implementation we need to be 
+            * For alignment not covered by default implementation we need to be 
             * able to retrieve the original pointer before alignement correction
             * thus we store an offset factor into the original pointer.
             */  
@@ -361,7 +361,7 @@ namespace stl
             const _ptr_type _origin_ptr = _ptr;
             if(not std::align(alignof(_Tp), sizeof(_Tp), _ptr, _n_bytes_adj))
             {
-              _self.deallocate(_ptr, _n_bytes);
+              _self.deallocate(_ptr, _n_bytes_adj);
               // keep the original allocator exception behavior
               if constexpr(noexcept(_self.allocate({})))
                 return _ptr_type{}; //nullable ptr
@@ -384,6 +384,7 @@ namespace stl
             return _ptr;
           }
           else
+            // covered by default alignement
             return _self.allocate(_n_bytes);
         }
         catch(...)
@@ -446,6 +447,53 @@ namespace stl
           constexpr std::size_t _n_bytes = _n_elem * sizeof(_1st_type);
           constexpr _diff_type 
             _Align_diff = alignof(_1st_type) - alignof(_byte_type);
+          if constexpr(_Align_diff > 0)
+          {
+            /*
+            * if the head-type of the tuple, has an alignment not covered by the
+            * default implementation, we adjust alignment and store the offset.
+            * the total size of the arena, is calculated in such a manner that
+            * all buffers are aligned at their natural alignement, by adding 
+            * padding between buffers if necessary. 
+            */
+            constexpr auto 
+              [_n_bytes, _diffs] = _M_nbytes_and_offsets<_Ts...>(_n_elem);
+
+            constexpr std::size_t _n_bytes_adj = _n_bytes + _Align_diff;
+            _ptr_type _ptr = _self.allocate(_n_bytes_adj);
+            if(_ptr == _ptr_type{})
+              return _ptr;
+            // realign original pointer
+            const _ptr_type _origin_ptr = _ptr;
+            if( not std::align(alignof(_1st_type)
+                            , sizeof(_1st_type)
+                            , _ptr, _n_bytes_adj) )
+            {
+              _self.deallocate(_ptr, _n_bytes_adj);
+              // keep the original allocator exception behavior
+              if constexpr(noexcept(_self.allocate({})))
+                return _ptr_type{}; //nullable ptr
+              else
+                throw std::bad_alloc{};
+            }
+            /*
+            * since the general rule for alignement is to use power of 2 values
+            * we can prove that there is one integer x > 3 where 2^x = 8 * n
+            * a multiple of 8. That is; any alignement >= 8 could be expressed
+            * by an alignement of 8.
+            * we will store only the factor into one byte memory.
+            */ 
+            _diff_type _factor = (_ptr - _origin_ptr) / 8;
+            if(_factor != 0 )
+              _self.construct(reinterpret_cast<char*>(_ptr - 1)
+                            , static_cast<char>(_factor));
+            else
+            { }// nothing to do, the pointer is already aligned
+            return _ptr;
+          }
+          else
+            // covered by default alignement
+            return _self.allocate(_n_bytes);
         }
         catch(...)
         {// propagate exception
