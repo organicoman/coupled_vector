@@ -655,12 +655,74 @@ namespace stl
     /**
      * @tparam _Mem_max_size : 
      *         maximum memory allowed, for Arena allocation policy, after which
-     *         the implementation switchs to allocating each buffer separratly.
+     *         the implementation switchs to allocating each buffer separately.
+     *         As a default value, we use the size of allocating 20 elements of
+     *         each type. Usually 20 elements can be linearly traversed in
+     *         effecient time.
     */
-    template<std::size_t _Mem_max_size>
-    couplvecs() noexcept
-    : _M_data(__detail::_couplvecs_arena_Impl<_Alloc, _Ts...>)
-    , _M_mem_sz(_max_mem_size)
+    template<std::size_t _Mem_max_size = 20 * (sizeof(_Ts)+...)>
+    constexpr 
+    couplvecs() noexcept(noexcept(_Alloc()))
+    : __base_type(), _m_max_arena(_Mem_max_size)
+    { }
+
+    template<std::size_t _Mem_max_size = 20 * (sizeof(_Ts)+...)>
+    constexpr
+    explicit 
+    couplvecs(const _Alloc& alloc) noexcept
+    : __base_type(alloc), _m_max_arena(_Mem_max_size)
+    { }
+
+    template<std::size_t _Mem_max_size = 20 * (sizeof(_Ts)+...)>
+    constexpr
+    explicit 
+    couplvecs(size_type count, const_reference value
+            , const _Alloc& alloc = _Alloc())
+    : __base_type(count, value, alloc), _m_max_arena(_Mem_max_size)
+    { }
+
+    template<std::size_t _Mem_max_size = 20 * (sizeof(_Ts)+...)>
+    constexpr
+    explicit 
+    couplvecs(size_type count, const _Alloc& alloc = _Alloc())
+    : __base_type(count, alloc), _m_max_arena(_Mem_max_size)
+    { }
+
+    template<typename InputIt, std::size_t _Mem_max_size = 20 * (sizeof(_Ts)+...)>
+    constexpr
+    couplvecs(Input first, Input last, const _Alloc& alloc = _Alloc())
+    : __base_type(first, last, alloc), _m_max_arena(_Mem_max_size)
+    { }
+
+    template<std::size_t _Mem_max_size = 20 * (sizeof(_Ts)+...)>
+    constexpr
+    couplvecs(const couplvecs& other)
+    : __base_alloc(other), _m_max_arena(_Mem_max_size)
+    { }
+
+    template<std::size_t _Mem_max_size = 20 * (sizeof(_Ts)+...)>
+    constexpr
+    couplvecs(const couplvecs& other, const _Alloc& alloc)
+    : __base_type(other, alloc), _m_max_arena(_Mem_max_size)
+    { }
+
+    template<std::size_t _Mem_max_size = 20 * (sizeof(_Ts)+...)>
+    constexpr
+    couplvecs(couplvecs&& other) noexcept
+    : __base_alloc(std::move(other)), _m_max_arena(_Mem_max_size)
+    { }
+
+    template<std::size_t _Mem_max_size = 20 * (sizeof(_Ts)+...)>
+    constexpr
+    couplvecs(couplvecs&& other, const _Alloc& alloc)
+    : __base_type(std::move(other), alloc)
+    { }
+
+    template<std::size_t _Mem_max_size = 20 * (sizeof(_Ts)+...)>
+    constexpr
+    couplvecs(std::initializer_list<value_type> init
+            , const _Alloc& alloc = _Alloc())
+    : __base_type(std::move(init), alloc)
     { }
 
     // Element access
