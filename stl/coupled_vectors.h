@@ -238,7 +238,83 @@ namespace stl
     struct __is_tuple<std::pair<T,V>>: std::true_type{};
 
     template<typename T>
-    inline constexpr bool __is_tuple_v = __is_tuple<T>::value;   
+    inline constexpr bool __is_tuple_v = __is_tuple<T>::value;
+
+    // Helper class to create contiguous block of memory, containing many
+    // arrays of different types, densely packed.
+    template<std::size_t _nElem, std::size_t _Idx, typename..._Ts>
+    struct _Buf_Impl;
+
+    template<std::size_t _nElem, std::size_t _Idx, typename _Tp>
+    struct _Buf_base : std::array<_Tp, _nElem>
+    { };
+
+    template<std::size_t _nElem, std::size_t _Idx, typename _Head, typename..._Ts>
+    struct _Buf_Impl<_nElem, _Idx, _Head, _Ts...> 
+    : _Buf_Impl<_nElem, _Idx + 1, _Ts...>
+    , protected _Buf_base<_nElem, _Idx, _Head>
+    { 
+      template<std::size_t _I>
+      constexpr 
+      auto 
+      data() noexcept
+      {
+        // Arguments dependent lookup will help to fetch the correct base class
+        // thus, the correct member function.
+        // there are no arguments to this member function; but RVO replaces it.
+        static_assert(_I <= sizeof...(_Ts), "Out of range Index.");
+        return 
+          _Buf_base<_nElem
+                   ,_I
+                   ,std::tuple_element_t<_I, std::tuple<_Head, _Ts...>>>::data();
+      }
+
+      template<std::size_t _I>
+      constexpr 
+      const auto 
+      data() const noexcept
+      {
+        static_assert(_I <= sizeof...(_Ts), "Out of range Index.");
+        return 
+          _Buf_base<_nElem
+                   ,_I
+                   ,std::tuple_element_t<_I, std::tuple<_Head, _Ts...>>>::data();
+      }
+    };
+
+    // partial specialization for one type list
+    template<std::size_t _nElem, std::size_t _Idx, typename _Tp>
+    struct _Buf_Impl<_nELem, _Idx, _Tp>: _Buf_base<_nElem, Idx, _Tp>
+    { };
+
+    // wrapper class to _Buf_Impl
+    template<std::size_t _nElem, typename..._Ts>
+    struct _Arena_buffer: _Buf_Impl<_nElem, 0, _Ts...>
+    {
+      // number of elements common to all buffers
+      constexpr
+      std::size_t
+      size() const noexcept
+      { return _nElem; }
+
+      // count types in this Arena
+      constexpr
+      std::size_t
+      count() const noexcept
+      { return sizeof...(_Ts); }
+
+      // Length in bytes of this Arena
+      constexpr
+      std::size_t
+      length const noexcept
+      { return sizeof(*this); }
+    };
+
+    // specialization for tuple type parameter
+    template<std::size_t _nElem, typename..._Ts>
+    struct _Arena_buffer<_nElem, std:tuple<_Ts...>>
+    : _Arena_buffer<_nElem, _Ts...>
+    { };
 
     /// @brief _Alloc_base: base class to manage allocation of the coupled
     ///        buffers.
