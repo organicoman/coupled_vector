@@ -384,6 +384,7 @@ namespace stl
           using _Tuple = _Tp;
           static_assert(__is_tuple_v<_Tuple>
               , "_M_allocate() for Arena policy takes a tuple-like type.");
+
           return _Allocate_hlpr<_Tuple>{}(_Self, _n_elem);
         }
         if constexpr(_Policy == __memory_policy::_Spread)
@@ -465,8 +466,8 @@ namespace stl
             /*
             * since the general rule for alignement is to use power of 2 values
             * we can prove that there is one integer x > 3 where 2^x = 8 * n
-            * a multiple of 8. That is; any alignement >= 8 could be expressed
-            * by an alignement of 8.
+            * a multiple of 8. That is; any power of 2 alignement >= 8 
+            * could be expressed by an alignement of 8.
             * we will store only the factor into one byte memory.
             */ 
             _diff_type _factor = (_ptr - _origin_ptr) / alignof(_byte_type);
