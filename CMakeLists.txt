@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(couplvecs main.cpp
-               coupled_vectors.h)
+               stl/coupled_vectors.h)
 
 include(GNUInstallDirs)
 install(TARGETS couplvecs
